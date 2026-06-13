@@ -178,7 +178,7 @@ export default function ReportsPage() {
             </SelectContent>
           </Select>
           <Button variant="outline" className="h-12 px-6 border-2 border-slate-200 font-bold bg-white" onClick={handlePrint}>
-            <FileDown className="ml-2 h-5 w-5" /> طباعة تقرير مرتب
+            <FileDown className="ml-2 h-5 w-5" /> طباعة التقرير
           </Button>
         </div>
       </div>
@@ -285,7 +285,7 @@ export default function ReportsPage() {
                         <Gamepad2 className="h-8 w-8" />
                     </div>
                     <div>
-                        <p className="text-slate-500 font-bold">المورد الأكثر طلباً</p>
+                        <p className="text-slate-500 font-bold">الأكثر طلباً</p>
                         <p className="text-3xl font-black">{data?.topResource}</p>
                     </div>
                 </div>

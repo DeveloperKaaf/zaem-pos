@@ -5,10 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TableCard } from "@/components/dashboard/TableCard";
 import { io } from "socket.io-client";
-import { Activity, Gamepad2, Laptop, Trophy, Target, LayoutGrid, Zap, Maximize, Minimize, PlayCircle } from "lucide-react";
+import { Activity, Gamepad2, Laptop, Trophy, Target, LayoutGrid, Zap, Maximize, Minimize, PlayCircle, Wallet } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function Dashboard() {
   const [resources, setResources] = useState([]);
@@ -16,6 +18,8 @@ export default function Dashboard() {
   const [activeCount, setActiveCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isShiftStarted, setIsShiftStarted] = useState(false);
+  const [floatAmount, setFloatAmount] = useState<string>("");
+  const [startingShift, setStartingShift] = useState(false);
   const router = useRouter();
 
   const toggleFullscreen = () => {
@@ -58,19 +62,28 @@ export default function Dashboard() {
     } catch (e) { console.error("Error fetching resources", e); }
   }, [router]);
 
+  const checkShiftStatus = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/reports/shift/status`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data && data.isActive) {
+        setIsShiftStarted(true);
+        localStorage.setItem('shiftStarted', 'true');
+        localStorage.setItem('shiftUser', data.userId);
+      } else {
+        setIsShiftStarted(false);
+        localStorage.removeItem('shiftStarted');
+      }
+    } catch (e) { console.error(e); }
+  }, []);
+
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    const user = userData ? JSON.parse(userData) : null;
-    const shiftStatus = localStorage.getItem('shiftStarted');
-    const shiftUser = localStorage.getItem('shiftUser');
-
-    // Check if shift is started AND it belongs to the current user
-    if (shiftStatus === 'true' && shiftUser === user?.id) {
-      setIsShiftStarted(true);
-    } else {
-      setIsShiftStarted(false);
-    }
-
+    checkShiftStatus();
     fetchResources();
     const socket = io(API_BASE_URL, { transports: ['websocket'], upgrade: false });
     socket.on('sessionUpdate', () => fetchResources());
@@ -84,17 +97,39 @@ export default function Dashboard() {
       socket.disconnect();
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
-  }, [fetchResources]);
+  }, [fetchResources, checkShiftStatus]);
 
-  const startShift = () => {
-    const userData = localStorage.getItem('user');
-    const user = userData ? JSON.parse(userData) : null;
-
-    localStorage.setItem('shiftStarted', 'true');
-    if (user?.id) {
-        localStorage.setItem('shiftUser', user.id);
+  const startShift = async () => {
+    if (!floatAmount || isNaN(parseFloat(floatAmount))) {
+      alert("يرجى إدخال مبلغ العهدة المستلمة بشكل صحيح");
+      return;
     }
-    setIsShiftStarted(true);
+
+    setStartingShift(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_BASE_URL}/reports/shift/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ floatAmount: parseFloat(floatAmount) })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('shiftStarted', 'true');
+        localStorage.setItem('shiftUser', data.userId);
+        setIsShiftStarted(true);
+      } else {
+        alert("خطأ في بدء الوردية");
+      }
+    } catch (e) {
+      alert("خطأ في الاتصال بالسيرفر");
+    } finally {
+      setStartingShift(false);
+    }
   };
 
   const groupedResources = useMemo(() => {
@@ -122,15 +157,36 @@ export default function Dashboard() {
   return (
     <div className="p-6 space-y-10 bg-slate-50 min-h-screen relative" dir="rtl">
       {!isShiftStarted && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
-          <Card className="w-full max-w-md p-8 text-center space-y-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md p-8 text-center space-y-6 shadow-2xl border-t-8 border-t-blue-600">
             <PlayCircle className="w-20 h-20 text-blue-500 mx-auto animate-pulse" />
             <div className="space-y-2">
               <h2 className="text-3xl font-black text-slate-800">بدء وردية جديدة</h2>
-              <p className="text-slate-500 font-bold">يجب بدء الشفت لتتمكن من تشغيل الأجهزة والتحكم</p>
+              <p className="text-slate-500 font-bold">يرجى إدخال مبلغ العهدة النقدية المستلمة في الدرج</p>
             </div>
-            <Button onClick={startShift} className="w-full h-16 text-xl font-black bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-500/20">
-              بدء الشفت الآن
+
+            <div className="space-y-3 text-right">
+              <Label className="text-lg font-bold flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-blue-600" /> مبلغ العهدة (الاستلام):
+              </Label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  className="h-16 text-3xl font-black text-center bg-slate-50 border-2 focus:border-blue-500 rounded-2xl"
+                  value={floatAmount}
+                  onChange={(e) => setFloatAmount(e.target.value)}
+                />
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">ريال</span>
+              </div>
+            </div>
+
+            <Button
+              onClick={startShift}
+              disabled={startingShift}
+              className="w-full h-16 text-xl font-black bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-500/20 rounded-2xl transition-all active:scale-95"
+            >
+              {startingShift ? "جاري البدء..." : "بدء الوردية الآن"}
             </Button>
           </Card>
         </div>

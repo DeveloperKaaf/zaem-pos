@@ -13,7 +13,9 @@ import {
   DialogFooter,
   DialogDescription
 } from "@/components/ui/dialog";
-import { Play, Square, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle, Plus, Minus, ShoppingCart, Wallet, Landmark } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Play, Square, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle, Plus, Minus, ShoppingCart, Wallet, Landmark, Split } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 
@@ -30,6 +32,11 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
   const [timeLeft, setTimeLeft] = useState<string>("00:00:00");
   const [currentTimeAmount, setCurrentTimeAmount] = useState<number>(0);
 
+  // حالات التقسيم (Split Payment)
+  const [isSplit, setIsSplit] = useState(false);
+  const [cashPart, setCashPart] = useState<string>("");
+  const [netPart, setNetPart] = useState<string>("");
+
   // سلة الطلبات المؤقتة
   const [cart, setCart] = useState<Record<string, { product: any, quantity: number }>>({});
 
@@ -44,21 +51,32 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
   const activeSession = resource.sessions?.find((s: any) => s.status === 'ACTIVE');
   const activeInvoice = activeSession?.invoice;
 
-  // إعادة ضبط بيانات الإيقاف عند تغير الجلسة أو تحميلها
   useEffect(() => {
     setTotalPausedMs(0);
     setPauseStartTime(null);
     setIsPaused(false);
     setIsStoppingOpen(false);
-    setCart({}); // تصفير السلة عند تغيير الجلسة
+    setCart({});
+    setIsSplit(false);
+    setCashPart("");
+    setNetPart("");
   }, [activeSession?.id]);
+
+  // تحديث الجزء الشبكة تلقائياً عند تغيير الكاش والعكس
+  const handleCashChange = (val: string, total: number) => {
+    setCashPart(val);
+    const cash = parseFloat(val) || 0;
+    if (cash <= total) {
+      setNetPart((total - cash).toFixed(2));
+    } else {
+      setNetPart("0");
+    }
+  };
 
   const handleTogglePause = () => {
     if (!isPaused) {
-      // بدء الإيقاف المؤقت
       setPauseStartTime(Date.now());
     } else {
-      // الاستمرار من الإيقاف المؤقت
       if (pauseStartTime) {
         const pausedDuration = Date.now() - pauseStartTime;
         setTotalPausedMs(prev => prev + pausedDuration);
@@ -85,7 +103,6 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         const now = Date.now();
 
         if (activeSession.durationMin > 0) {
-          // وقت محدد -> إضافة مدة التوقف لوقت النهاية
           const end = start + activeSession.durationMin * 60 * 1000;
           const diff = (end + totalPausedMs) - now;
 
@@ -100,7 +117,6 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             setCurrentTimeAmount(activeInvoice?.timeAmount || 0);
           }
         } else {
-          // وقت مفتوح -> طرح مدة التوقف من الوقت الإجمالي ليكون الحساب دقيقاً
           const diff = (now - start) - totalPausedMs;
           const diffMin = Math.ceil(diff / 60000);
           const h = Math.floor(diff / 3600000);
@@ -123,7 +139,6 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     setProducts(data);
   };
 
-  // منطق السلة: إضافة/نقصان الكميات
   const updateCart = (product: any, delta: number) => {
     setCart(prev => {
       const current = prev[product.id] || { product, quantity: 0 };
@@ -142,7 +157,8 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     const token = localStorage.getItem('token');
     setLoading(true);
     try {
-      // إرسال جميع الطلبات من السلة للسيرفر
+      const splitData = paymentMethod === 'SPLIT' ? { cash: parseFloat(cashPart), net: parseFloat(netPart) } : null;
+
       for (const item of Object.values(cart)) {
         await fetch(`${API_BASE_URL}/invoices/${activeInvoice.id}/add-item`, {
           method: 'POST',
@@ -153,10 +169,18 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
           body: JSON.stringify({ productId: item.product.id, quantity: item.quantity })
         });
       }
+
+      // إذا كانت الطلبات مدفوعة فورياً (مثل الكاش والشبكة)
+      if (paymentMethod !== 'LATER') {
+          // يمكن هنا استدعاء دفع الفاتورة جزئياً أو كلياً إذا تطلب النظام ذلك
+          // حالياً النظام يضيف الطلبات للفاتورة الأساسية
+      }
+
       onUpdate();
       setCart({});
       setShowConfirmOrder(false);
       setShowAddOrder(false);
+      setIsSplit(false);
     } catch (e) {
       console.error(e);
       alert("خطأ في إضافة الطلبات");
@@ -172,16 +196,24 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     const token = localStorage.getItem('token');
     setLoading(true);
     try {
+      const splitData = paymentMethod === 'SPLIT' ? { cash: parseFloat(cashPart), net: parseFloat(netPart) } : null;
+
       const res = await fetch(`${API_BASE_URL}/sessions/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ resourceId: resource.id, durationMin: duration, paymentMethod })
+        body: JSON.stringify({
+            resourceId: resource.id,
+            durationMin: duration,
+            paymentMethod,
+            splitData
+        })
       });
       if (res.ok) {
         setShowPayment(false);
+        setIsSplit(false);
         onUpdate();
       }
     } catch (e) { console.error(e); }
@@ -192,6 +224,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     const token = localStorage.getItem('token');
     setLoading(true);
     try {
+      const splitData = paymentMethod === 'SPLIT' ? { cash: parseFloat(cashPart), net: parseFloat(netPart) } : null;
       const res = await fetch(`${API_BASE_URL}/sessions/extend`, {
         method: 'POST',
         headers: {
@@ -201,28 +234,36 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         body: JSON.stringify({
           sessionId: activeSession.id,
           extraMin: selectedExtendPrice.durationMin,
-          paymentMethod
+          paymentMethod,
+          splitData
         })
       });
       if (res.ok) {
         setShowExtendPayment(false);
         setShowExtend(false);
+        setIsSplit(false);
         onUpdate();
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  const handleStopSession = async () => {
+  const handleStopSession = async (paymentMethod: string = 'CASH') => {
     const token = localStorage.getItem('token');
     setLoading(true);
     try {
+      const splitData = paymentMethod === 'SPLIT' ? { cash: parseFloat(cashPart), net: parseFloat(netPart) } : null;
       const res = await fetch(`${API_BASE_URL}/sessions/stop/${activeSession.id}`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ paymentMethod, splitData })
       });
       if (res.ok) {
         setIsStoppingOpen(false);
+        setIsSplit(false);
         onUpdate();
       }
     } catch (e) { console.error(e); }
@@ -282,7 +323,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
                 {resource.prices.map((p: any) => (
                   <Button key={p.id} variant="outline" className="h-16 text-xl font-bold hover:bg-emerald-50" onClick={() => {
                     if (p.durationMin === 0) {
-                      handleStartSession('CASH', 0); // بدء مباشر للوقت المفتوح
+                      handleStartSession('CASH', 0);
                     } else {
                       setSelectedPrice(p);
                       setShowPayment(true);
@@ -298,10 +339,72 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
           <div className="flex flex-col gap-1.5 w-full z-20">
             {isStoppingOpen ? (
               <div className="grid grid-cols-2 gap-1">
-                <Button className="bg-emerald-600 hover:bg-emerald-700 font-black h-10 text-[10px]" onClick={handleStopSession} disabled={loading}>
-                  <CreditCard className="ml-1 h-3.5 w-3.5" /> تأكيد الدفع
-                </Button>
-                <Button variant="outline" className="font-bold h-9 text-[10px]" onClick={() => setIsStoppingOpen(false)}>
+                 <Dialog>
+                    <DialogTrigger asChild>
+                        <Button className="bg-emerald-600 hover:bg-emerald-700 font-black h-10 text-[10px]">
+                            <CreditCard className="ml-1 h-3.5 w-3.5" /> إنهاء ودفع
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent dir="rtl">
+                        <DialogHeader>
+                            <DialogTitle className="text-2xl font-bold">إنهاء الحساب - {resource.name}</DialogTitle>
+                        </DialogHeader>
+                        <div className="py-6 text-center">
+                            <p className="text-slate-500 font-bold">المبلغ الإجمالي المستحق:</p>
+                            <div className="text-6xl font-black text-slate-900 mt-2">
+                                {(currentTimeAmount + (activeInvoice?.itemsAmount || 0)).toFixed(2)} <span className="text-xl">ريال</span>
+                            </div>
+                        </div>
+
+                        {isSplit && (
+                            <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 mb-4">
+                                <div className="space-y-2">
+                                    <Label>مبلغ الكاش</Label>
+                                    <Input
+                                        type="number"
+                                        value={cashPart}
+                                        onChange={(e) => handleCashChange(e.target.value, (currentTimeAmount + (activeInvoice?.itemsAmount || 0)))}
+                                        placeholder="0.00"
+                                        className="text-center font-bold"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>مبلغ الشبكة</Label>
+                                    <Input
+                                        type="number"
+                                        value={netPart}
+                                        readOnly
+                                        className="text-center font-bold bg-slate-100"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <DialogFooter className="gap-2 flex-col">
+                            <div className="flex gap-2 w-full">
+                                <Button onClick={() => handleStopSession('CASH')} className="flex-1 h-16 bg-emerald-600 font-black" disabled={loading}>كاش</Button>
+                                <Button onClick={() => handleStopSession('NET')} className="flex-1 h-16 bg-blue-600 font-black" disabled={loading}>شبكة</Button>
+                            </div>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setIsSplit(!isSplit);
+                                    if(!isSplit) handleCashChange("0", (currentTimeAmount + (activeInvoice?.itemsAmount || 0)));
+                                }}
+                                className={`w-full h-12 font-bold ${isSplit ? 'bg-amber-50 border-amber-500 text-amber-700' : ''}`}
+                            >
+                                <Split className="ml-2 h-4 w-4" /> {isSplit ? 'إلغاء التقسيم' : 'تقسيم (كاش + شبكة)'}
+                            </Button>
+                            {isSplit && (
+                                <Button onClick={() => handleStopSession('SPLIT')} className="w-full h-14 bg-slate-900 text-white font-black text-lg mt-2" disabled={loading}>
+                                    تأكيد الدفع المختلط
+                                </Button>
+                            )}
+                        </DialogFooter>
+                    </DialogContent>
+                 </Dialog>
+
+                <Button variant="outline" className="font-bold h-10 text-[10px]" onClick={() => setIsStoppingOpen(false)}>
                   <PlayCircle className="ml-1 h-3.5 w-3.5" /> استمرار
                 </Button>
               </div>
@@ -340,39 +443,46 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-emerald-800">تأكيد الدفع</DialogTitle>
           </DialogHeader>
-          <div className="py-10 text-center">
+          <div className="py-6 text-center">
             <p className="text-slate-500 font-bold">المبلغ المطلوب:</p>
-            <div className="text-7xl font-black text-slate-900 mt-2">
-              {selectedPrice?.price} <span className="text-2xl">ريال</span>
+            <div className="text-6xl font-black text-slate-900 mt-2">
+              {selectedPrice?.price} <span className="text-xl">ريال</span>
             </div>
           </div>
-          <DialogFooter className="gap-3 flex-row">
-            <Button onClick={() => handleStartSession('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 font-black shadow-lg flex flex-col gap-1" disabled={loading}>
-              <Wallet className="h-8 w-8" />
-              كاش
-            </Button>
-            <Button onClick={() => handleStartSession('NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 font-black shadow-lg flex flex-col gap-1" disabled={loading}>
-              <Landmark className="h-8 w-8" />
-              شبكة
-            </Button>
-          </DialogFooter>
-          <Button variant="ghost" onClick={() => setShowPayment(false)} className="w-full mt-2">إلغاء</Button>
-        </DialogContent>
-      </Dialog>
 
-      {/* حوار اختيار مدة التمديد */}
-      <Dialog open={showExtend} onOpenChange={setShowExtend}>
-        <DialogContent dir="rtl">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">تمديد وقت {resource.name}</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-6">
-            {resource.prices?.filter((p:any) => p.durationMin > 0).map((p: any) => (
-              <Button key={p.id} variant="outline" className="h-16 font-bold" onClick={() => { setSelectedExtendPrice(p); setShowExtendPayment(true); }}>
-                +{p.durationMin} دقيقة
-              </Button>
-            ))}
-          </div>
+          {isSplit && (
+            <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 mb-4">
+                <div className="space-y-2">
+                    <Label>مبلغ الكاش</Label>
+                    <Input type="number" value={cashPart} onChange={(e) => handleCashChange(e.target.value, selectedPrice?.price)} placeholder="0.00" className="text-center font-bold" />
+                </div>
+                <div className="space-y-2">
+                    <Label>مبلغ الشبكة</Label>
+                    <Input type="number" value={netPart} readOnly className="text-center font-bold bg-slate-100" />
+                </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-3 flex-col">
+            <div className="flex gap-3 w-full">
+                <Button onClick={() => handleStartSession('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+                <Wallet className="h-8 w-8" /> كاش
+                </Button>
+                <Button onClick={() => handleStartSession('NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+                <Landmark className="h-8 w-8" /> شبكة
+                </Button>
+            </div>
+
+            <Button variant="outline" onClick={() => { setIsSplit(!isSplit); if(!isSplit) handleCashChange("0", selectedPrice?.price); }} className={`w-full h-12 font-bold ${isSplit ? 'bg-amber-50 border-amber-500 text-amber-700' : ''}`}>
+                <Split className="ml-2 h-4 w-4" /> {isSplit ? 'إلغاء التقسيم' : 'تقسيم (كاش + شبكة)'}
+            </Button>
+
+            {isSplit && (
+                <Button onClick={() => handleStartSession('SPLIT')} className="w-full h-14 bg-slate-900 text-white font-black text-lg" disabled={loading}>
+                    تأكيد الدفع المختلط
+                </Button>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -382,23 +492,46 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد دفع مبلغ التمديد</DialogTitle>
           </DialogHeader>
-          <div className="py-10 text-center">
+          <div className="py-6 text-center">
             <p className="text-slate-500 font-bold">مبلغ التمديد المطلوب:</p>
-            <div className="text-7xl font-black text-slate-900 mt-2">
-              {selectedExtendPrice?.price} <span className="text-2xl">ريال</span>
+            <div className="text-6xl font-black text-slate-900 mt-2">
+              {selectedExtendPrice?.price} <span className="text-xl">ريال</span>
             </div>
           </div>
-          <DialogFooter className="gap-3 flex-row">
-            <Button onClick={() => handleExtendSession('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
-              <Wallet className="h-8 w-8" />
-              كاش
+
+          {isSplit && (
+            <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 mb-4">
+                <div className="space-y-2">
+                    <Label>مبلغ الكاش</Label>
+                    <Input type="number" value={cashPart} onChange={(e) => handleCashChange(e.target.value, selectedExtendPrice?.price)} placeholder="0.00" className="text-center font-bold" />
+                </div>
+                <div className="space-y-2">
+                    <Label>مبلغ الشبكة</Label>
+                    <Input type="number" value={netPart} readOnly className="text-center font-bold bg-slate-100" />
+                </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-3 flex-col">
+            <div className="flex gap-3 w-full">
+                <Button onClick={() => handleExtendSession('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+                <Wallet className="h-8 w-8" /> كاش
+                </Button>
+                <Button onClick={() => handleExtendSession('NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+                <Landmark className="h-8 w-8" /> شبكة
+                </Button>
+            </div>
+
+            <Button variant="outline" onClick={() => { setIsSplit(!isSplit); if(!isSplit) handleCashChange("0", selectedExtendPrice?.price); }} className={`w-full h-12 font-bold ${isSplit ? 'bg-amber-50 border-amber-500 text-amber-700' : ''}`}>
+                <Split className="ml-2 h-4 w-4" /> {isSplit ? 'إلغاء التقسيم' : 'تقسيم (كاش + شبكة)'}
             </Button>
-            <Button onClick={() => handleExtendSession('NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
-              <Landmark className="h-8 w-8" />
-              شبكة
-            </Button>
+
+            {isSplit && (
+                <Button onClick={() => handleExtendSession('SPLIT')} className="w-full h-14 bg-slate-900 text-white font-black text-lg" disabled={loading}>
+                    تأكيد الدفع المختلط
+                </Button>
+            )}
           </DialogFooter>
-          <Button variant="ghost" onClick={() => setShowExtendPayment(false)} className="w-full mt-2">إلغاء</Button>
         </DialogContent>
       </Dialog>
 
@@ -475,17 +608,39 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             </div>
           </div>
 
+          {isSplit && (
+            <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 mb-4">
+                <div className="space-y-2">
+                    <Label>مبلغ الكاش</Label>
+                    <Input type="number" value={cashPart} onChange={(e) => handleCashChange(e.target.value, cartTotal)} placeholder="0.00" className="text-center font-bold" />
+                </div>
+                <div className="space-y-2">
+                    <Label>مبلغ الشبكة</Label>
+                    <Input type="number" value={netPart} readOnly className="text-center font-bold bg-slate-100" />
+                </div>
+            </div>
+          )}
+
           <DialogFooter className="gap-3 flex-row">
-            <Button onClick={() => handleConfirmOrders('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
-              <Wallet className="h-8 w-8" />
-              كاش
+            <div className="flex gap-3 w-full">
+                <Button onClick={() => handleConfirmOrders('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+                <Wallet className="h-8 w-8" /> كاش
+                </Button>
+                <Button onClick={() => handleConfirmOrders('NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+                <Landmark className="h-8 w-8" /> شبكة
+                </Button>
+            </div>
+
+            <Button variant="outline" onClick={() => { setIsSplit(!isSplit); if(!isSplit) handleCashChange("0", cartTotal); }} className={`w-full h-12 font-bold ${isSplit ? 'bg-amber-50 border-amber-500 text-amber-700' : ''}`}>
+                <Split className="ml-2 h-4 w-4" /> {isSplit ? 'إلغاء التقسيم' : 'تقسيم (كاش + شبكة)'}
             </Button>
-            <Button onClick={() => handleConfirmOrders('NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
-              <Landmark className="h-8 w-8" />
-              شبكة
-            </Button>
+
+            {isSplit && (
+                <Button onClick={() => handleConfirmOrders('SPLIT')} className="w-full h-14 bg-slate-900 text-white font-black text-lg" disabled={loading}>
+                    تأكيد الدفع المختلط
+                </Button>
+            )}
           </DialogFooter>
-          <Button variant="ghost" onClick={() => setShowConfirmOrder(false)} className="w-full mt-2">تعديل</Button>
         </DialogContent>
       </Dialog>
     </Card>

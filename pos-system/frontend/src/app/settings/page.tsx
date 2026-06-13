@@ -14,6 +14,13 @@ import {
   DialogTrigger,
   DialogFooter
 } from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+  } from "@/components/ui/select";
 import { Plus, Trash2, Save, RefreshCw, Gamepad2 } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
@@ -75,7 +82,7 @@ export default function SettingsPage() {
           type: newType,
           prices: [
             { durationMin: 60, price: 30 },
-            { durationMin: 0, price: 0 } // Default for open time
+            { durationMin: 0, price: 0 }
           ]
         })
       });
@@ -264,7 +271,17 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
   const [name, setName] = useState(resource.name);
   const [type, setType] = useState(resource.type);
   const [tuyaId, setTuyaId] = useState(resource.tuyaDeviceId || '');
+  const [tuyaSwitchCode, setTuyaSwitchCode] = useState(resource.tuyaSwitchCode || 'switch_1');
   const [prices, setPrices] = useState(resource.prices || []);
+
+  // Sync state if resource prop changes
+  useEffect(() => {
+    setName(resource.name);
+    setType(resource.type);
+    setTuyaId(resource.tuyaDeviceId || '');
+    setTuyaSwitchCode(resource.tuyaSwitchCode || 'switch_1');
+    setPrices(resource.prices || []);
+  }, [resource]);
 
   const addPriceRow = () => {
     setPrices([...prices, { durationMin: 60, price: 30 }]);
@@ -312,7 +329,6 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
                 <span className="text-xs text-gray-400 w-20">{p.durationMin == 0 ? 'وقت مفتوح' : 'دقيقة'}</span>
               </div>
 
-              {/* إخفاء حقل السعر إذا كانت المدة 0 كما في الطلب رقم 9 */}
               {p.durationMin != 0 ? (
                 <Input type="number" value={p.price} onChange={(e) => updatePriceRow(index, 'price', e.target.value)} />
               ) : (
@@ -326,12 +342,29 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
               </Button>
             </div>
           ))}
-          <div className="pt-4 border-t flex justify-between items-end">
-             <div className="space-y-2">
+          <div className="pt-4 border-t flex justify-between items-end gap-4">
+             <div className="flex-1 space-y-2">
                 <Label className="text-gray-500">Smart Life (Tuya Device ID)</Label>
-                <Input value={tuyaId} onChange={(e) => setTuyaId(e.target.value)} className="w-80 bg-white" />
+                <Input value={tuyaId} onChange={(e) => setTuyaId(e.target.value)} className="w-full bg-white font-mono" placeholder="أدخل ID الجهاز" />
              </div>
-             <Button className="bg-blue-600 hover:bg-blue-700 px-8 h-12 font-bold" onClick={() => onSave({ name, type, tuyaDeviceId: tuyaId, prices })}>
+
+             <div className="w-48 space-y-2">
+                <Label className="text-gray-500">رقم المفتاح (Switch)</Label>
+                <Select value={tuyaSwitchCode} onValueChange={setTuyaSwitchCode} dir="rtl">
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="اختر الزر" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="switch_1">الزر الأول (1)</SelectItem>
+                    <SelectItem value="switch_2">الزر الثاني (2)</SelectItem>
+                    <SelectItem value="switch_3">الزر الثالث (3)</SelectItem>
+                    <SelectItem value="switch_4">الزر الرابع (4)</SelectItem>
+                    <SelectItem value="switch">مفتاح عام</SelectItem>
+                  </SelectContent>
+                </Select>
+             </div>
+
+             <Button className="bg-blue-600 hover:bg-blue-700 px-8 h-10 font-bold" onClick={() => onSave({ name, type, tuyaDeviceId: tuyaId, tuyaSwitchCode, prices })}>
                 <Save className="ml-2 h-5 w-5" /> حفظ التعديلات
              </Button>
           </div>

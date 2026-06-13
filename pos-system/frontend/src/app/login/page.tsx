@@ -64,11 +64,11 @@ export default function LoginPage() {
             {error && <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded text-center font-bold">{error}</div>}
             <div className="space-y-2">
               <Label>اسم المستخدم</Label>
-              <Input placeholder="admin" required value={username} onChange={(e) => setUsername(e.target.value)} />
+              <Input placeholder="أدخل اسم المستخدم" required value={username} onChange={(e) => setUsername(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>كلمة المرور</Label>
-              <Input type="password" placeholder="admin123" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <Input type="password" placeholder="أدخل كلمة المرور" required value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
             <Button type="submit" className="w-full h-12 text-lg bg-blue-600 hover:bg-blue-700 font-bold" disabled={loading}>
               {loading ? 'جاري التحقق...' : 'دخول للنظام'}

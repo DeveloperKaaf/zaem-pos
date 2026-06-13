@@ -13,6 +13,7 @@ import { API_BASE_URL } from "@/config";
 export default function ShiftPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isEnding, setIsEnding] = useState(false);
   const router = useRouter();
 
   const fetchShiftData = async () => {
@@ -32,13 +33,31 @@ export default function ShiftPage() {
 
   useEffect(() => { fetchShiftData(); }, []);
 
-  const handleEndShift = () => {
-    if (confirm("هل أنت متأكد من رغبتك في إنهاء الشفت؟ سيتم تسجيل خروجك وتصفير عداد الشفت.")) {
-      localStorage.removeItem('shiftStarted');
-      localStorage.removeItem('shiftUser');
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+  const handleEndShift = async () => {
+    if (!confirm("هل أنت متأكد من رغبتك في إنهاء الشفت؟ سيتم تصفير المبالغ وتسجيل خروجك.")) return;
+
+    setIsEnding(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_BASE_URL}/reports/shift/end`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        // مسح بيانات الشفت والجلسة
+        localStorage.removeItem('shiftStarted');
+        localStorage.removeItem('shiftUser');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      } else {
+        alert("حدث خطأ أثناء محاولة إغلاق الشفت في السيرفر");
+      }
+    } catch (e) {
+      alert("خطأ في الاتصال بالسيرفر");
+    } finally {
+      setIsEnding(false);
     }
   };
 
@@ -60,8 +79,6 @@ export default function ShiftPage() {
             .stat-box.highlight { background: #f8fafc; border-left: 5px solid #3b82f6; }
             .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
             .stat-row:last-child { border-bottom: none; }
-            .total-section { margin-top: 30px; padding: 20px; background: #1e293b; color: white; border-radius: 12px; text-align: center; }
-            .total-section h2 { margin: 0; font-size: 32px; }
             table { width: 100%; border-collapse: collapse; margin-top: 30px; font-size: 14px; }
             th { background: #f8fafc; color: #475569; font-weight: bold; text-align: right; padding: 12px; border: 1px solid #e2e8f0; }
             td { padding: 10px; border: 1px solid #e2e8f0; }
@@ -86,6 +103,7 @@ export default function ShiftPage() {
             </div>
             <div class="stat-box highlight">
               <div class="stat-row"><span>إجمالي الإيرادات:</span> <strong>${data.totalRevenue?.toFixed(2)} ريال</strong></div>
+              <div class="stat-row" style="color: #059669;"><span>العهدة الافتتاحية:</span> <strong>${data.floatAmount?.toFixed(2)} ريال</strong></div>
               <div class="stat-row" style="color: #059669;"><span>إجمالي الكاش (Cash):</span> <strong>${data.cashTotal?.toFixed(2)} ريال</strong></div>
               <div class="stat-row" style="color: #2563eb;"><span>إجمالي الشبكة (Network):</span> <strong>${data.netTotal?.toFixed(2)} ريال</strong></div>
               <div class="stat-row" style="color: #ef4444;"><span>إجمالي المصروفات:</span> <strong>${data.totalExpenses?.toFixed(2)} ريال</strong></div>
@@ -162,8 +180,8 @@ export default function ShiftPage() {
           <Button onClick={fetchShiftData} variant="outline" className="bg-white border-2 border-slate-200 font-bold h-12 px-6">
             <RefreshCw className={`ml-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> تحديث
           </Button>
-          <Button onClick={handleEndShift} variant="destructive" className="font-black h-12 px-6 shadow-lg">
-            <XCircle className="ml-2 h-5 w-5" /> إنهاء الشفت
+          <Button onClick={handleEndShift} disabled={isEnding} variant="destructive" className="font-black h-12 px-6 shadow-lg">
+            <XCircle className="ml-2 h-5 w-5" /> {isEnding ? "جاري الإغلاق..." : "إنهاء الشفت"}
           </Button>
         </div>
       </div>
@@ -177,6 +195,13 @@ export default function ShiftPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-8 space-y-4">
+              <div className="flex justify-between items-center bg-white/5 p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <ArrowUpCircle className="text-emerald-400 h-5 w-5" />
+                  <span className="text-slate-400 font-bold">العهدة الافتتاحية:</span>
+                </div>
+                <span className="text-xl font-black text-white">{data?.floatAmount?.toFixed(2)} ريال</span>
+              </div>
               <div className="flex justify-between items-center bg-white/5 p-4 rounded-xl">
                 <div className="flex items-center gap-2">
                   <Wallet className="text-emerald-400 h-5 w-5" />
