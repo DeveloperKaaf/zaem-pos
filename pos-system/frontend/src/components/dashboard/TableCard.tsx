@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogDescription
 } from "@/components/ui/dialog";
-import { Timer, Play, Square, Receipt, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap } from "lucide-react";
+import { Timer, Play, Square, Receipt, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 
@@ -29,6 +29,10 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
   const [timeLeft, setTimeLeft] = useState<string>("00:00:00");
   const [currentTimeAmount, setCurrentTimeAmount] = useState<number>(0);
 
+  // حالات جديدة للوقت المفتوح
+  const [isStoppingOpen, setIsStoppingOpen] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+
   const router = useRouter();
 
   const activeSession = resource.sessions?.find((s: any) => s.status === 'ACTIVE');
@@ -37,16 +41,16 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
   // دالة لاختيار الأيقونة المناسبة للصنف
   const getResourceIcon = () => {
     const type = (resource.type || "").toLowerCase();
-    if (type.includes('بلاي ستيشن')) return <Gamepad2 className="h-20 w-20 text-blue-500/20" />;
-    if (type.includes('بلياردو')) return <Target className="h-20 w-20 text-emerald-500/20" />;
-    if (type.includes('تنس طاولة')) return <Trophy className="h-20 w-20 text-orange-500/20" />;
-    if (type.includes('فرفيرة') || type.includes('فرفيره')) return <Zap className="h-20 w-20 text-purple-500/20" />;
-    return <Laptop className="h-20 w-20 text-slate-500/20" />;
+    if (type.includes('بلاي ستيشن')) return <Gamepad2 className="h-16 w-16 text-blue-500/20" />;
+    if (type.includes('بلياردو')) return <Target className="h-16 w-16 text-emerald-500/20" />;
+    if (type.includes('تنس طاولة')) return <Trophy className="h-16 w-16 text-orange-500/20" />;
+    if (type.includes('فرفيرة') || type.includes('فرفيره')) return <Zap className="h-16 w-16 text-purple-500/20" />;
+    return <Laptop className="h-16 w-16 text-slate-500/20" />;
   };
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (activeSession) {
+    if (activeSession && !isPaused) {
       interval = setInterval(() => {
         const start = new Date(activeSession.startTime).getTime();
         const now = Date.now();
@@ -76,7 +80,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [activeSession, activeInvoice]);
+  }, [activeSession, activeInvoice, isPaused]);
 
   const fetchProducts = async () => {
     const token = localStorage.getItem('token');
@@ -103,7 +107,10 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     } catch (e) { console.error(e); }
   };
 
-  const handleStartSession = async () => {
+  const handleStartSession = async (forcedDuration?: number) => {
+    const duration = forcedDuration !== undefined ? forcedDuration : selectedPrice?.durationMin;
+    if (duration === undefined) return;
+
     const token = localStorage.getItem('token');
     setLoading(true);
     try {
@@ -113,12 +120,13 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ resourceId: resource.id, durationMin: selectedPrice.durationMin })
+        body: JSON.stringify({ resourceId: resource.id, durationMin: duration })
       });
       if (res.ok) {
         setShowPayment(false);
+        setIsStoppingOpen(false);
+        setIsPaused(false);
         onUpdate();
-        router.push('/invoices');
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -149,7 +157,6 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
   };
 
   const handleStopSession = async () => {
-    if (!confirm("هل تريد إنهاء الجلسة وإصدار الفاتورة؟")) return;
     const token = localStorage.getItem('token');
     setLoading(true);
     try {
@@ -157,61 +164,73 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.ok) onUpdate();
+      if (res.ok) {
+        setIsStoppingOpen(false);
+        onUpdate();
+      }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
   const isAvailable = resource.status === 'AVAILABLE';
+  const isOpenTime = activeSession && activeSession.durationMin === 0;
 
   return (
-    <Card className={`relative overflow-hidden border-2 shadow-xl transition-all ${!isAvailable ? 'border-red-600 bg-red-50/30 scale-[1.02]' : 'border-emerald-400 bg-white'}`}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2 bg-slate-50/50">
-        <CardTitle className="text-xl font-black text-slate-800">{resource.name}</CardTitle>
-        <Badge variant={isAvailable ? "secondary" : "destructive"} className={`px-3 py-1 font-bold ${isAvailable ? "bg-emerald-500 text-white" : "bg-red-600 text-white animate-pulse"}`}>
+    <Card className={`relative overflow-hidden border-2 shadow-lg transition-all ${!isAvailable ? 'border-red-600 bg-red-50/30' : 'border-emerald-400 bg-white'}`}>
+      <CardHeader className="flex flex-row items-center justify-between py-2 px-3 bg-slate-50/50">
+        <CardTitle className="text-base font-black text-slate-800">{resource.name}</CardTitle>
+        <Badge variant={isAvailable ? "secondary" : "destructive"} className={`px-2 py-0.5 text-[10px] font-bold ${isAvailable ? "bg-emerald-500 text-white" : "bg-red-600 text-white animate-pulse"}`}>
           {isAvailable ? "متاح" : "مشغول"}
         </Badge>
       </CardHeader>
 
-      <CardContent className="pt-8 text-center h-48 flex flex-col justify-center bg-white relative">
+      <CardContent className="py-4 text-center h-36 flex flex-col justify-center bg-white relative">
         {!isAvailable ? (
-          <div className="space-y-3 z-10">
-            <div className={`text-5xl font-mono font-black ${timeLeft === "انتهى الوقت" ? "text-red-600 animate-bounce" : "text-slate-900"}`}>
+          <div className="space-y-1 z-10">
+            {isStoppingOpen && <p className="text-red-600 text-[10px] font-black animate-pulse">تأكيد إنهاء الحساب</p>}
+            <div className={`text-3xl font-mono font-black ${timeLeft === "انتهى الوقت" || isStoppingOpen ? "text-red-600" : "text-slate-900"} ${isPaused ? "opacity-40" : ""}`}>
               {timeLeft}
             </div>
-            <div className="bg-slate-100 rounded-xl p-3 border border-slate-200">
-                <p className="text-xs font-bold text-slate-500 mb-1">المبلغ الحالي</p>
-                <div className="text-2xl font-black text-emerald-700">
-                  {(currentTimeAmount + (activeInvoice?.itemsAmount || 0)).toFixed(2)} <span className="text-sm">ريال</span>
+            <div className="bg-slate-100 rounded-lg p-1.5 border border-slate-200">
+                <p className="text-[9px] font-bold text-slate-500 mb-0.5">المبلغ الحالي</p>
+                <div className="text-lg font-black text-emerald-700">
+                  {(currentTimeAmount + (activeInvoice?.itemsAmount || 0)).toFixed(2)} <span className="text-[10px]">ريال</span>
                 </div>
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2">
-            <div className="mb-2">{getResourceIcon()}</div>
-            <p className="text-3xl font-black text-slate-800 uppercase tracking-tighter">
+          <div className="flex flex-col items-center gap-1">
+            <div className="mb-0.5 scale-75">{getResourceIcon()}</div>
+            <p className="text-xl font-black text-slate-800 uppercase tracking-tighter">
               {resource.type}
             </p>
           </div>
         )}
       </CardContent>
 
-      <CardFooter className="grid grid-cols-1 gap-2 p-4 bg-slate-50 border-t">
+      <CardFooter className="grid grid-cols-1 gap-1.5 p-2 bg-slate-50 border-t">
         {isAvailable ? (
           <Dialog>
             <DialogTrigger asChild>
-              <Button className="w-full bg-emerald-600 hover:bg-emerald-700 font-black text-lg h-14 shadow-lg">
-                <Play className="ml-2 h-6 w-6" /> بدء اللعب
+              <Button className="w-full bg-emerald-600 hover:bg-emerald-700 font-black text-sm h-10 shadow-md">
+                <Play className="ml-1.5 h-4 w-4" /> بدء اللعب
               </Button>
             </DialogTrigger>
             <DialogContent dir="rtl">
               <DialogHeader>
                 <DialogTitle className="text-2xl font-bold">اختر الوقت لـ {resource.name}</DialogTitle>
-                <DialogDescription>سيتم تشغيل الجهاز والعداد فور التأكيد.</DialogDescription>
+                <DialogDescription>سيتم تشغيل الجهاز والعداد فور الاختيار.</DialogDescription>
               </DialogHeader>
               <div className="grid grid-cols-1 gap-3 py-4">
                 {resource.prices.map((p: any) => (
-                  <Button key={p.id} variant="outline" className="h-16 text-xl font-bold hover:bg-emerald-50" onClick={() => { setSelectedPrice(p); setShowPayment(true); }}>
+                  <Button key={p.id} variant="outline" className="h-16 text-xl font-bold hover:bg-emerald-50" onClick={() => {
+                    if (p.durationMin === 0) {
+                      handleStartSession(0); // بدء مباشر للوقت المفتوح
+                    } else {
+                      setSelectedPrice(p);
+                      setShowPayment(true);
+                    }
+                  }}>
                     {p.durationMin === 0 ? "🕒 وقت مفتوح (0.5 ر/د)" : `${p.durationMin} دقيقة - ${p.price} ريال`}
                   </Button>
                 ))}
@@ -219,18 +238,37 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             </DialogContent>
           </Dialog>
         ) : (
-          <div className="flex flex-col gap-2 w-full z-20">
-            <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" className="h-12 font-bold border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => setShowExtend(true)}>
-                  <PlusCircle className="ml-2 h-4 w-4" /> تمديد
+          <div className="flex flex-col gap-1.5 w-full z-20">
+            {isStoppingOpen ? (
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button className="bg-emerald-600 hover:bg-emerald-700 font-black h-10 text-xs" onClick={handleStopSession} disabled={loading}>
+                  <CreditCard className="ml-1 h-4 w-4" /> تأكيد الدفع
                 </Button>
-                <Button variant="outline" className="h-12 font-bold" onClick={() => { setShowAddOrder(true); fetchProducts(); }}>
-                  <Utensils className="ml-2 h-4 w-4" /> طلبات
+                <Button variant="outline" className="font-bold h-10 text-xs" onClick={() => setIsStoppingOpen(false)}>
+                  <PlayCircle className="ml-1 h-4 w-4" /> استمرار
                 </Button>
-            </div>
-            <Button variant="destructive" className="font-black text-lg h-14 shadow-md" onClick={handleStopSession} disabled={loading}>
-              <Square className="ml-2 h-6 w-6" /> إنهاء الجلسة
-            </Button>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-1.5">
+                    {isOpenTime ? (
+                      <Button variant="outline" className={`h-10 text-xs font-bold ${isPaused ? "bg-amber-50 border-amber-300 text-amber-700" : "border-blue-200 text-blue-700"}`} onClick={() => setIsPaused(!isPaused)}>
+                        {isPaused ? <><PlayCircle className="ml-1 h-3.5 w-3.5" /> استمرار</> : <><Pause className="ml-1 h-3.5 w-3.5" /> مؤقت</>}
+                      </Button>
+                    ) : (
+                      <Button variant="outline" className="h-10 text-xs font-bold border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => setShowExtend(true)}>
+                        <PlusCircle className="ml-1 h-3.5 w-3.5" /> تمديد
+                      </Button>
+                    )}
+                    <Button variant="outline" className="h-10 text-xs font-bold" onClick={() => { setShowAddOrder(true); fetchProducts(); }}>
+                      <Utensils className="ml-1 h-3.5 w-3.5" /> طلبات
+                    </Button>
+                </div>
+                <Button variant="destructive" className="font-black text-sm h-10 shadow-sm" onClick={() => isOpenTime ? setIsStoppingOpen(true) : handleStopSession()} disabled={loading}>
+                  <Square className="ml-1.5 h-4 w-4" /> إنهاء الجلسة
+                </Button>
+              </>
+            )}
           </div>
         )}
       </CardFooter>
@@ -240,17 +278,16 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         <DialogContent dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-emerald-800">تأكيد استلام المبلغ</DialogTitle>
-            <DialogDescription>لن يبدأ الوقت إلا بعد التأكيد.</DialogDescription>
           </DialogHeader>
           <div className="py-10 text-center">
             <p className="text-slate-500 font-bold">المبلغ المطلوب:</p>
             <div className="text-7xl font-black text-slate-900 mt-2">
-              {selectedPrice?.durationMin === 0 ? "0.00" : `${selectedPrice?.price}`} <span className="text-2xl">ريال</span>
+              {selectedPrice?.price} <span className="text-2xl">ريال</span>
             </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="ghost" onClick={() => setShowPayment(false)} className="flex-1 h-14">إلغاء</Button>
-            <Button onClick={handleStartSession} className="flex-1 h-14 text-xl bg-emerald-600 hover:bg-emerald-700 font-black shadow-lg" disabled={loading}>
+            <Button onClick={() => handleStartSession()} className="flex-1 h-14 text-xl bg-emerald-600 hover:bg-emerald-700 font-black shadow-lg" disabled={loading}>
               <CreditCard className="ml-2 h-6 w-6" /> تم الاستلام
             </Button>
           </DialogFooter>
@@ -262,7 +299,6 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         <DialogContent dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">تمديد وقت {resource.name}</DialogTitle>
-            <DialogDescription>اختر المدة الإضافية.</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-6">
             {resource.prices?.filter((p:any) => p.durationMin > 0).map((p: any) => (
@@ -279,7 +315,6 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         <DialogContent dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد استلام مبلغ التمديد</DialogTitle>
-            <DialogDescription>سيتم إضافة {selectedExtendPrice?.durationMin} دقيقة للجلسة.</DialogDescription>
           </DialogHeader>
           <div className="py-10 text-center">
             <p className="text-slate-500 font-bold">مبلغ التمديد المطلوب:</p>
@@ -300,7 +335,6 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         <DialogContent dir="rtl" className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold">منيو البوفيه</DialogTitle>
-            <DialogDescription>إضافة طلبات لـ {resource.name}</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-4 max-h-[400px] overflow-y-auto">
             {products.map((product: any) => (
