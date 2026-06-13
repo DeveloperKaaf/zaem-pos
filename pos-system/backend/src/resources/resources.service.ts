@@ -60,52 +60,39 @@ export class ResourcesService {
   async delete(id: string) {
     const resource = await this.prisma.resource.findUnique({
       where: { id },
-      include: {
-        sessions: {
-          include: { invoice: true }
-        }
-      }
+      include: { sessions: true }
     });
 
     if (!resource) throw new NotFoundException('هذا الجهاز غير موجود');
 
+    // منع الحذف إذا كانت هناك جلسة نشطة حالياً
     const hasActiveSession = resource.sessions.some(s => s.status === 'ACTIVE');
     if (hasActiveSession) {
-      throw new BadRequestException('لا يمكن حذف الجهاز لوجود جلسة نشطة حالياً. أغلق الجلسة أولاً.');
+      throw new BadRequestException('لا يمكن حذف الجهاز لوجود جلسة نشطة حالياً. يرجى إيقافها أولاً.');
     }
 
     try {
-      // الحذف اليدوي المتسلسل لفك كافة الارتباطات في Supabase
+      // حذف يدوي متسلسل لضمان النجاح التام في سوبابيس
       return await this.prisma.$transaction(async (tx) => {
         const sessionIds = resource.sessions.map(s => s.id);
 
-        // 1. حذف الفواتير المرتبطة
+        // 1. حذف الفواتير المرتبطة بكل الجلسات
         if (sessionIds.length > 0) {
-          await tx.invoice.deleteMany({
-            where: { sessionId: { in: sessionIds } }
-          });
+          await tx.invoice.deleteMany({ where: { sessionId: { in: sessionIds } } });
         }
 
-        // 2. حذف الجلسات المرتبطة
-        await tx.session.deleteMany({
-          where: { resourceId: id }
-        });
+        // 2. حذف الجلسات
+        await tx.session.deleteMany({ where: { resourceId: id } });
 
         // 3. حذف إعدادات الأسعار
-        await tx.priceConfig.deleteMany({
-          where: { resourceId: id }
-        });
+        await tx.priceConfig.deleteMany({ where: { resourceId: id } });
 
         // 4. حذف الجهاز نفسه
-        return await tx.resource.delete({
-          where: { id }
-        });
-      }, {
-        timeout: 10000 // مهلة كافية للسيرفر السحابي
+        return await tx.resource.delete({ where: { id } });
       });
     } catch (error) {
       console.error('Delete Resource Error:', error);
-      throw new InternalServerErrorException(`فشل الحذف بسبب قيود حماية البيانات في سوبابيس. يرجى التأكد من تنفيذ أمر npx prisma db push`);
+      throw new InternalServerErrorException('حدث خطأ أثناء محاولة مسح السجلات المرتبطة من قاعدة البيانات.');
     }
   }
 
