@@ -9,6 +9,7 @@ export class SessionsController {
   constructor(private readonly sessionsService: SessionsService) {}
 
   @Post('start')
+  @Roles('ADMIN', 'CASHIER') // إضافة الأدوار هنا لتفعيل التحقق من المستخدم
   start(@Body() body: { resourceId: string; durationMin: number }, @Request() req) {
     return this.sessionsService.startSession(body.resourceId, body.durationMin, req.user.sub);
   }
@@ -20,6 +21,7 @@ export class SessionsController {
   }
 
   @Post('stop/:id')
+  @Roles('ADMIN', 'CASHIER')
   stop(@Param('id') id: string, @Request() req) {
     return this.sessionsService.stopSession(id, req.user.sub);
   }

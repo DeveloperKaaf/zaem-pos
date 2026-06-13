@@ -64,9 +64,18 @@ export default function Dashboard() {
     fetchResources();
     fetchStats();
 
-    const socket = io(API_BASE_URL);
+    // إجبار استخدام websocket لتجنب مشاكل الاتصال في Render
+    const socket = io(API_BASE_URL, {
+      transports: ['websocket'],
+      upgrade: false
+    });
+
     socket.on('sessionUpdate', () => {
       fetchResources();
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error("Socket Connection Error:", err.message);
     });
 
     return () => { socket.disconnect(); };

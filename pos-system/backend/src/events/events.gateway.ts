@@ -10,7 +10,10 @@ import { OnEvent } from '@nestjs/event-emitter';
 @WebSocketGateway({
   cors: {
     origin: '*',
+    methods: ['GET', 'POST'],
+    credentials: true,
   },
+  transports: ['websocket', 'polling'], // دعم كلاهما مع تفضيل الواجهة لـ websocket
 })
 export class EventsGateway implements OnGatewayConnection {
   @WebSocketServer()
