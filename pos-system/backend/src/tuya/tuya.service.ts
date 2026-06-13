@@ -11,9 +11,14 @@ export class TuyaService {
   private readonly secretKey: string;
 
   constructor(private configService: ConfigService) {
-    this.baseUrl = this.configService.get('TUYA_API_URL') || 'https://openapi.tuyaeu.com';
-    this.accessKey = this.configService.get('TUYA_ACCESS_KEY');
-    this.secretKey = this.configService.get('TUYA_SECRET_KEY');
+    // إزالة أي مسافات أو علامات تنصيص زائدة قد تأتي من الإعدادات
+    this.baseUrl = (this.configService.get('TUYA_API_URL') || 'https://openapi.tuyaeu.com').replace(/['"]/g, '').trim();
+    this.accessKey = (this.configService.get('TUYA_ACCESS_KEY') || '').replace(/['"]/g, '').trim();
+    this.secretKey = (this.configService.get('TUYA_SECRET_KEY') || '').replace(/['"]/g, '').trim();
+
+    if (this.accessKey) {
+      this.logger.log(`Tuya initialized with Key: ${this.accessKey.substring(0, 5)}...`);
+    }
   }
 
   private async getAccessToken() {
@@ -52,7 +57,7 @@ export class TuyaService {
 
   async controlDevice(deviceId: string, status: boolean) {
     if (!this.accessKey || !this.secretKey || !deviceId) {
-      this.logger.warn(`Tuya Skip: Missing configuration for device ${deviceId}`);
+      this.logger.warn(`Tuya Skip: Missing config. Key: ${!!this.accessKey}, Secret: ${!!this.secretKey}, Device: ${!!deviceId}`);
       return;
     }
 
@@ -60,7 +65,6 @@ export class TuyaService {
       const accessToken = await this.getAccessToken();
       const timestamp = Date.now().toString();
 
-      // سنحاول إرسال الكودين switch و switch_1 لضمان عمل الجهاز أياً كان نوعه
       const commands = [
         { code: 'switch_1', value: status },
         { code: 'switch', value: status }
@@ -69,7 +73,6 @@ export class TuyaService {
       const body = { commands };
       const url = `/v1.0/devices/${deviceId}/commands`;
 
-      // حساب التوقيع الخاص بالطلب
       const sign = await this.getBusinessSign('POST', url, accessToken, timestamp, body);
 
       const response = await axios.post(
@@ -94,8 +97,7 @@ export class TuyaService {
 
       return response.data;
     } catch (error) {
-      const errorData = error.response?.data ? JSON.stringify(error.response.data) : error.message;
-      this.logger.error(`🚨 Tuya Connection Error for ${deviceId}: ${errorData}`);
+      this.logger.error(`🚨 Tuya Connection Error for ${deviceId}: ${error.message}`);
       throw error;
     }
   }
