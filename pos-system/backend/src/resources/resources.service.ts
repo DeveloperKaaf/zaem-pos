@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -41,11 +41,7 @@ export class ResourcesService {
     return this.prisma.$transaction(async (tx) => {
       await tx.resource.update({
         where: { id },
-        data: {
-          name: data.name,
-          type: data.type,
-          tuyaDeviceId: data.tuyaDeviceId
-        }
+        data: { name: data.name, type: data.type, tuyaDeviceId: data.tuyaDeviceId }
       });
 
       if (data.prices) {
@@ -64,74 +60,34 @@ export class ResourcesService {
   async delete(id: string) {
     const resource = await this.prisma.resource.findUnique({
       where: { id },
-      include: {
-        sessions: {
-          include: { invoice: true }
-        }
-      }
+      include: { sessions: { where: { status: 'ACTIVE' } } }
     });
 
     if (!resource) throw new NotFoundException('الجهاز غير موجود');
-
-    const hasActiveSession = resource.sessions.some(s => s.status === 'ACTIVE');
-    if (hasActiveSession) {
-      throw new BadRequestException('لا يمكن حذف الجهاز لوجود جلسة نشطة حالياً. قم بإيقاف الجلسة أولاً.');
+    if (resource.sessions.length > 0) {
+      throw new BadRequestException('لا يمكن حذف الجهاز لوجود جلسة نشطة حالياً.');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // 1. حذف الفواتير المرتبطة بجلسات هذا الجهاز
-      const sessionIds = resource.sessions.map(s => s.id);
-      await tx.invoice.deleteMany({
-        where: { sessionId: { in: sessionIds } }
-      });
-
-      // 2. حذف الجلسات
-      await tx.session.deleteMany({
-        where: { resourceId: id }
-      });
-
-      // 3. حذف إعدادات الأسعار
-      await tx.priceConfig.deleteMany({
-        where: { resourceId: id }
-      });
-
-      // 4. حذف الجهاز نفسه
-      return tx.resource.delete({
-        where: { id }
-      });
-    });
+    try {
+      // بفضل خاصية Cascade في الـ Schema، سيتم حذف كل شيء مرتبط تلقائياً
+      return await this.prisma.resource.delete({ where: { id } });
+    } catch (error) {
+      console.error(error);
+      throw new InternalServerErrorException('حدث خطأ أثناء الحذف من قاعدة البيانات');
+    }
   }
 
   async getDashboardStats() {
     const activeSessions = await this.prisma.session.count({ where: { status: 'ACTIVE' } });
-
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-
     const dailyRevenue = await this.prisma.invoice.aggregate({
-      where: {
-        createdAt: { gte: today },
-        isPaid: true
-      },
+      where: { createdAt: { gte: today }, isPaid: true },
       _sum: { totalAmount: true }
     });
-
-    const monthlyRevenue = await this.prisma.invoice.aggregate({
-      where: {
-        createdAt: { gte: monthStart },
-        isPaid: true
-      },
-      _sum: { totalAmount: true }
-    });
-
     return {
       activeSessions,
       dailyRevenue: dailyRevenue._sum.totalAmount || 0,
-      monthlyRevenue: monthlyRevenue._sum.totalAmount || 0,
     };
   }
 }

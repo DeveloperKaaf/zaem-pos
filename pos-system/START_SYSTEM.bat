@@ -63,3 +63,9 @@ echo    DONE! SYSTEM IS RUNNING
 echo    Backend: Port 3000 | Frontend: Port 5173
 echo ===================================================
 pause
+
+
+
+git add .
+git commit -m "إصلاح خطأ حذف الأجهزة وتنظيف البيانات المرتبطة"
+git push origin main
