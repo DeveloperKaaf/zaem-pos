@@ -29,13 +29,11 @@ export class SessionsService {
       initialPrice = priceConfig.price;
     }
 
-    // محاولة تشغيل الجهاز عبر تويا (مع معالجة الخطأ لكي لا ينهار النظام)
     if (resource.tuyaDeviceId) {
       try {
         await this.tuyaService.controlDevice(resource.tuyaDeviceId, true);
       } catch (e) {
         console.error('Tuya Error:', e.message);
-        // لا نلقي خطأ هنا، نكتفي بالتسجيل في السجلات لكي تستمر الجلسة
       }
     }
 
@@ -72,6 +70,19 @@ export class SessionsService {
 
       await this.logsService.createLog(userId, 'START_SESSION', `بدء جلسة لـ ${resource.name}. المبلغ: ${initialPrice}`);
 
+      // إعداد تنبيه الـ 5 دقائق (وميض الإضاءة)
+      if (durationMin > 5) {
+        const warningTime = (durationMin - 5) * 60 * 1000;
+        setTimeout(async () => {
+          if (resource.tuyaDeviceId) {
+            console.log(`Warning flash for ${resource.name}`);
+            await this.tuyaService.controlDevice(resource.tuyaDeviceId, false);
+            setTimeout(() => this.tuyaService.controlDevice(resource.tuyaDeviceId, true), 500);
+          }
+        }, warningTime);
+      }
+
+      // إعداد إغلاق الجلسة التلقائي
       if (durationMin > 0) {
         setTimeout(() => {
           this.stopSession(session.id, 'SYSTEM');
@@ -82,8 +93,41 @@ export class SessionsService {
       return session;
     } catch (error) {
       console.error('Prisma Error:', error);
-      throw new InternalServerErrorException('فشل في حفظ الجلسة في قاعدة البيانات. تأكد من استقرار اتصال Supabase.');
+      throw new InternalServerErrorException('فشل في حفظ الجلسة.');
     }
+  }
+
+  async extendSession(sessionId: string, extraMin: number, userId: string) {
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      include: { resource: { include: { prices: true } }, invoice: true }
+    });
+
+    if (!session || session.status !== 'ACTIVE') {
+      throw new BadRequestException('الجلسة غير نشطة');
+    }
+
+    const priceConfig = session.resource.prices.find(p => p.durationMin === extraMin);
+    const extraPrice = priceConfig?.price || 0;
+
+    const updatedSession = await this.prisma.$transaction(async (tx) => {
+      const newDuration = session.durationMin + extraMin;
+      const sess = await tx.session.update({
+        where: { id: sessionId },
+        data: { durationMin: newDuration }
+      });
+      await tx.invoice.update({
+        where: { sessionId: sessionId },
+        data: {
+          timeAmount: { increment: extraPrice },
+          totalAmount: { increment: extraPrice }
+        }
+      });
+      return sess;
+    });
+
+    this.eventEmitter.emit('session.updated', updatedSession);
+    return updatedSession;
   }
 
   async stopSession(sessionId: string, userId?: string) {
@@ -100,11 +144,9 @@ export class SessionsService {
       const now = new Date();
       const diffMs = now.getTime() - session.startTime.getTime();
       const diffMin = Math.ceil(diffMs / (60 * 1000));
-      // سعر افتراضي 0.5 ريال للدقيقة في حال عدم وجود تسعيرة
       finalTimeAmount = diffMin * 0.5;
     }
 
-    // محاولة إطفاء الجهاز
     if (session.resource.tuyaDeviceId) {
       try {
         await this.tuyaService.controlDevice(session.resource.tuyaDeviceId, false);
