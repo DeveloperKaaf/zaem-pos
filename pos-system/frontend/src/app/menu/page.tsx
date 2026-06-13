@@ -71,7 +71,7 @@ export default function MenuPage() {
       <div className="flex justify-between items-center">
         <div>
             <h1 className="text-3xl font-black text-slate-800 tracking-tight">إدارة المخزون والمنيو</h1>
-            <p className="text-slate-500 font-bold text-sm">إضافة المنتجات ومتابعة الكميات المتوفرة في البوفيه</p>
+            <p className="text-slate-500 font-bold text-sm">إضافة المنتجات ومتابعة الكميات المتوفرة في الكوفي</p>
         </div>
 
         <Dialog>

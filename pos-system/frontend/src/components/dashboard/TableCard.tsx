@@ -363,7 +363,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
       <Dialog open={showAddOrder} onOpenChange={setShowAddOrder}>
         <DialogContent dir="rtl" className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold">منيو البوفيه</DialogTitle>
+            <DialogTitle className="text-2xl font-bold">منيو الكوفي</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-4 max-h-[400px] overflow-y-auto">
             {products.map((product: any) => (
