@@ -4,21 +4,33 @@ import * as bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function main() {
-  const hashedPassword = await bcrypt.hash('admin123', 10);
-
-  // 1. إنشاء مدير النظام
+  // 1. إنشاء مدير النظام (الرئيسي)
+  const adminPassword = await bcrypt.hash('admin123', 10);
   await prisma.user.upsert({
     where: { username: 'admin' },
     update: {},
     create: {
       username: 'admin',
-      password: hashedPassword,
+      password: adminPassword,
       name: 'مدير النظام',
       role: 'ADMIN',
     },
   });
 
-  // 2. إضافة طاولات بلياردو
+  // 2. إنشاء مستخدم مدير إضافي
+  const managerPassword = await bcrypt.hash('manager123', 10);
+  await prisma.user.upsert({
+    where: { username: 'manager' },
+    update: {},
+    create: {
+      username: 'manager',
+      password: managerPassword,
+      name: 'مدير الفرع',
+      role: 'ADMIN',
+    },
+  });
+
+  // 3. إضافة طاولات بلياردو
   const billiardNames = ['طاولة 1', 'طاولة 2', 'طاولة 3', 'طاولة 4'];
   for (const name of billiardNames) {
     await prisma.resource.create({
@@ -38,7 +50,7 @@ async function main() {
     });
   }
 
-  // 3. إضافة أجهزة بلايستيشن
+  // 4. إضافة أجهزة بلايستيشن
   const psDevices = [
     { name: 'PS5 - VIP 1', price: 35 },
     { name: 'PS5 - VIP 2', price: 35 },
