@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogDescription
 } from "@/components/ui/dialog";
-import { Play, Square, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle, Plus, Minus, ShoppingCart } from "lucide-react";
+import { Play, Square, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle, Plus, Minus, ShoppingCart, Wallet, Landmark } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 
@@ -138,7 +138,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
 
   const cartTotal = Object.values(cart).reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
 
-  const handleConfirmOrders = async () => {
+  const handleConfirmOrders = async (paymentMethod: string) => {
     const token = localStorage.getItem('token');
     setLoading(true);
     try {
@@ -165,7 +165,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     }
   };
 
-  const handleStartSession = async (forcedDuration?: number) => {
+  const handleStartSession = async (paymentMethod: string, forcedDuration?: number) => {
     const duration = forcedDuration !== undefined ? forcedDuration : selectedPrice?.durationMin;
     if (duration === undefined) return;
 
@@ -178,7 +178,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ resourceId: resource.id, durationMin: duration })
+        body: JSON.stringify({ resourceId: resource.id, durationMin: duration, paymentMethod })
       });
       if (res.ok) {
         setShowPayment(false);
@@ -188,7 +188,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     finally { setLoading(false); }
   };
 
-  const handleExtendSession = async () => {
+  const handleExtendSession = async (paymentMethod: string) => {
     const token = localStorage.getItem('token');
     setLoading(true);
     try {
@@ -200,7 +200,8 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         },
         body: JSON.stringify({
           sessionId: activeSession.id,
-          extraMin: selectedExtendPrice.durationMin
+          extraMin: selectedExtendPrice.durationMin,
+          paymentMethod
         })
       });
       if (res.ok) {
@@ -281,7 +282,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
                 {resource.prices.map((p: any) => (
                   <Button key={p.id} variant="outline" className="h-16 text-xl font-bold hover:bg-emerald-50" onClick={() => {
                     if (p.durationMin === 0) {
-                      handleStartSession(0); // بدء مباشر للوقت المفتوح
+                      handleStartSession('CASH', 0); // بدء مباشر للوقت المفتوح
                     } else {
                       setSelectedPrice(p);
                       setShowPayment(true);
@@ -337,7 +338,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
       <Dialog open={showPayment} onOpenChange={setShowPayment}>
         <DialogContent dir="rtl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-emerald-800">تأكيد استلام المبلغ</DialogTitle>
+            <DialogTitle className="text-2xl font-bold text-emerald-800">تأكيد الدفع</DialogTitle>
           </DialogHeader>
           <div className="py-10 text-center">
             <p className="text-slate-500 font-bold">المبلغ المطلوب:</p>
@@ -345,12 +346,17 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
               {selectedPrice?.price} <span className="text-2xl">ريال</span>
             </div>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={() => setShowPayment(false)} className="flex-1 h-14">إلغاء</Button>
-            <Button onClick={() => handleStartSession()} className="flex-1 h-14 text-xl bg-emerald-600 hover:bg-emerald-700 font-black shadow-lg" disabled={loading}>
-              <CreditCard className="ml-2 h-6 w-6" /> تم الاستلام
+          <DialogFooter className="gap-3 flex-row">
+            <Button onClick={() => handleStartSession('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+              <Wallet className="h-8 w-8" />
+              كاش
+            </Button>
+            <Button onClick={() => handleStartSession('NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+              <Landmark className="h-8 w-8" />
+              شبكة
             </Button>
           </DialogFooter>
+          <Button variant="ghost" onClick={() => setShowPayment(false)} className="w-full mt-2">إلغاء</Button>
         </DialogContent>
       </Dialog>
 
@@ -374,7 +380,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
       <Dialog open={showExtendPayment} onOpenChange={setShowExtendPayment}>
         <DialogContent dir="rtl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد استلام مبلغ التمديد</DialogTitle>
+            <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد دفع مبلغ التمديد</DialogTitle>
           </DialogHeader>
           <div className="py-10 text-center">
             <p className="text-slate-500 font-bold">مبلغ التمديد المطلوب:</p>
@@ -382,16 +388,21 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
               {selectedExtendPrice?.price} <span className="text-2xl">ريال</span>
             </div>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={() => setShowExtendPayment(false)} className="flex-1 h-14">إلغاء</Button>
-            <Button onClick={handleExtendSession} className="flex-1 h-14 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg" disabled={loading}>
-              <CreditCard className="ml-2 h-6 w-6" /> تأكيد الاستلام
+          <DialogFooter className="gap-3 flex-row">
+            <Button onClick={() => handleExtendSession('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+              <Wallet className="h-8 w-8" />
+              كاش
+            </Button>
+            <Button onClick={() => handleExtendSession('NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+              <Landmark className="h-8 w-8" />
+              شبكة
             </Button>
           </DialogFooter>
+          <Button variant="ghost" onClick={() => setShowExtendPayment(false)} className="w-full mt-2">إلغاء</Button>
         </DialogContent>
       </Dialog>
 
-      {/* حوار المنيو مع نظام السلة - تم تغيير كلمة بوفيه إلى كوفي */}
+      {/* حوار المنيو */}
       <Dialog open={showAddOrder} onOpenChange={setShowAddOrder}>
         <DialogContent dir="rtl" className="sm:max-w-[500px]">
           <DialogHeader>
@@ -445,7 +456,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
       <Dialog open={showConfirmOrder} onOpenChange={setShowConfirmOrder}>
         <DialogContent dir="rtl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-emerald-800">تأكيد استلام مبلغ الطلبات</DialogTitle>
+            <DialogTitle className="text-2xl font-bold text-emerald-800">تأكيد الدفع</DialogTitle>
             <DialogDescription>سيتم إضافة الطلبات لفاتورة {resource.name} بعد التأكيد.</DialogDescription>
           </DialogHeader>
 
@@ -464,16 +475,17 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             </div>
           </div>
 
-          <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={() => setShowConfirmOrder(false)} className="flex-1 h-12">تعديل</Button>
-            <Button
-              onClick={handleConfirmOrders}
-              className="flex-1 h-12 text-xl bg-emerald-600 hover:bg-emerald-700 font-black shadow-lg"
-              disabled={loading}
-            >
-              تم الاستلام
+          <DialogFooter className="gap-3 flex-row">
+            <Button onClick={() => handleConfirmOrders('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+              <Wallet className="h-8 w-8" />
+              كاش
+            </Button>
+            <Button onClick={() => handleConfirmOrders('NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg flex flex-col gap-1" disabled={loading}>
+              <Landmark className="h-8 w-8" />
+              شبكة
             </Button>
           </DialogFooter>
+          <Button variant="ghost" onClick={() => setShowConfirmOrder(false)} className="w-full mt-2">تعديل</Button>
         </DialogContent>
       </Dialog>
     </Card>

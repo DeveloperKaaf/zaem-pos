@@ -13,7 +13,7 @@ import {
   DialogDescription,
   DialogFooter
 } from "@/components/ui/dialog";
-import { CheckCircle, Printer, RefreshCw, Clock, Timer, Wallet, PlusCircle, Square, CreditCard } from "lucide-react";
+import { CheckCircle, Printer, RefreshCw, Clock, Timer, Wallet, PlusCircle, Square, CreditCard, Landmark } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 import { io } from "socket.io-client";
@@ -92,8 +92,10 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [showExtend, setShowExtend] = useState(false);
   const [showExtendPayment, setShowExtendPayment] = useState(false);
+  const [showInvoicePayment, setShowInvoicePayment] = useState(false);
   const [selectedSession, setSelectedSession] = useState<any>(null);
   const [selectedExtendPrice, setSelectedExtendPrice] = useState<any>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
 
   const router = useRouter();
 
@@ -131,14 +133,18 @@ export default function InvoicesPage() {
     return () => { socket.disconnect(); };
   }, [fetchData]);
 
-  const handlePay = async (id: number) => {
+  const handlePay = async (id: number, paymentMethod: string) => {
     const token = localStorage.getItem('token');
     const res = await fetch(`${API_BASE_URL}/invoices/${id}/pay`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ paymentMethod })
     });
     if (res.ok) {
-      alert("✅ تم تحصيل المبلغ بنجاح");
+      setShowInvoicePayment(false);
       fetchData();
     }
   };
@@ -155,7 +161,7 @@ export default function InvoicesPage() {
     } catch (e) { alert("خطأ في الاتصال"); }
   };
 
-  const handleFinalExtend = async () => {
+  const handleFinalExtend = async (paymentMethod: string) => {
     const token = localStorage.getItem('token');
     try {
       const res = await fetch(`${API_BASE_URL}/sessions/extend`, {
@@ -166,7 +172,8 @@ export default function InvoicesPage() {
         },
         body: JSON.stringify({
           sessionId: selectedSession.id,
-          extraMin: selectedExtendPrice.durationMin
+          extraMin: selectedExtendPrice.durationMin,
+          paymentMethod
         })
       });
       if (res.ok) {
@@ -266,9 +273,9 @@ export default function InvoicesPage() {
                       </Button>
                       <Button
                         className="bg-emerald-600 hover:bg-emerald-700 h-14 px-12 font-black text-xl shadow-lg transition-all active:scale-95"
-                        onClick={() => handlePay(inv.id)}
+                        onClick={() => { setSelectedInvoice(inv); setShowInvoicePayment(true); }}
                       >
-                        تأكيد استلام المبلغ
+                        تأكيد الدفع
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -305,7 +312,7 @@ export default function InvoicesPage() {
       <Dialog open={showExtendPayment} onOpenChange={setShowExtendPayment}>
         <DialogContent dir="rtl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد استلام مبلغ التمديد</DialogTitle>
+            <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد دفع مبلغ التمديد</DialogTitle>
             <DialogDescription>سيتم إضافة {selectedExtendPrice?.durationMin} دقيقة لـ {selectedSession?.resourceName}.</DialogDescription>
           </DialogHeader>
           <div className="py-10 text-center">
@@ -314,12 +321,44 @@ export default function InvoicesPage() {
               {selectedExtendPrice?.price} <span className="text-2xl">ريال</span>
             </div>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={() => setShowExtendPayment(false)} className="flex-1 h-14">إلغاء</Button>
-            <Button onClick={handleFinalExtend} className="flex-1 h-14 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg">
-              <CreditCard className="ml-2 h-6 w-6" /> تأكيد الاستلام
+          <DialogFooter className="gap-3 flex-row">
+            <Button onClick={() => handleFinalExtend('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg flex flex-col gap-1">
+              <Wallet className="h-8 w-8" />
+              كاش
+            </Button>
+            <Button onClick={() => handleFinalExtend('NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg flex flex-col gap-1">
+              <Landmark className="h-8 w-8" />
+              شبكة
             </Button>
           </DialogFooter>
+          <Button variant="ghost" onClick={() => setShowExtendPayment(false)} className="w-full mt-2">إلغاء</Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* حوار تأكيد الدفع للفاتورة المعلقة */}
+      <Dialog open={showInvoicePayment} onOpenChange={setShowInvoicePayment}>
+        <DialogContent dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-emerald-800">تأكيد الدفع</DialogTitle>
+            <DialogDescription>تحصيل مبلغ الفاتورة لـ {selectedInvoice?.session?.resource?.name}.</DialogDescription>
+          </DialogHeader>
+          <div className="py-10 text-center">
+            <p className="text-slate-500 font-bold">المبلغ المطلوب:</p>
+            <div className="text-7xl font-black text-emerald-700 mt-2">
+              {selectedInvoice?.totalAmount.toFixed(2)} <span className="text-2xl">ريال</span>
+            </div>
+          </div>
+          <DialogFooter className="gap-3 flex-row">
+            <Button onClick={() => handlePay(selectedInvoice.id, 'CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg flex flex-col gap-1">
+              <Wallet className="h-8 w-8" />
+              كاش
+            </Button>
+            <Button onClick={() => handlePay(selectedInvoice.id, 'NET')} className="flex-1 h-20 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg flex flex-col gap-1">
+              <Landmark className="h-8 w-8" />
+              شبكة
+            </Button>
+          </DialogFooter>
+          <Button variant="ghost" onClick={() => setShowInvoicePayment(false)} className="w-full mt-2">إلغاء</Button>
         </DialogContent>
       </Dialog>
     </div>

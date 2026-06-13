@@ -75,17 +75,18 @@ model Expense {
 }
 
 model Invoice {
-  id           Int      @id @default(autoincrement())
-  sessionId    String   @unique
-  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  timeAmount   Float    @default(0)
-  itemsAmount  Float    @default(0)
-  totalAmount  Float    @default(0)
-  tax          Float    @default(0)
-  isPaid       Boolean  @default(false)
-  paymentDate  DateTime?
-  items        Json?
-  createdAt    DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  sessionId     String   @unique
+  session       Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  timeAmount    Float    @default(0)
+  itemsAmount   Float    @default(0)
+  totalAmount   Float    @default(0)
+  tax           Float    @default(0)
+  isPaid        Boolean  @default(false)
+  paymentDate   DateTime?
+  paymentMethod String?
+  items         Json?
+  createdAt     DateTime @default(now())
 }
 
 model ActionLog {

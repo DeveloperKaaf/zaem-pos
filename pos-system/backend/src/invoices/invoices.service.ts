@@ -11,7 +11,7 @@ export class InvoicesService {
     private logsService: LogsService,
   ) {}
 
-  async markAsPaid(invoiceId: number) {
+  async markAsPaid(invoiceId: number, paymentMethod: string = 'CASH') {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: { session: { include: { resource: true } } }
@@ -24,13 +24,14 @@ export class InvoicesService {
       data: {
         isPaid: true,
         paymentDate: new Date(),
+        paymentMethod: paymentMethod,
       },
     });
 
     await this.logsService.createLog(
       invoice.session.userId,
       'INVOICE_PAID',
-      `تحصيل مبلغ ${invoice.totalAmount} ريال لـ ${invoice.session.resource.name}`
+      `تحصيل مبلغ ${invoice.totalAmount} ريال لـ ${invoice.session.resource.name} (${paymentMethod === 'CASH' ? 'كاش' : 'شبكة'})`
     );
 
     this.eventEmitter.emit('dashboard.updated', { type: 'INVOICE_PAID', invoiceId });

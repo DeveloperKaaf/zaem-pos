@@ -9,15 +9,15 @@ export class SessionsController {
   constructor(private readonly sessionsService: SessionsService) {}
 
   @Post('start')
-  @Roles('ADMIN', 'CASHIER') // إضافة الأدوار هنا لتفعيل التحقق من المستخدم
-  start(@Body() body: { resourceId: string; durationMin: number }, @Request() req) {
-    return this.sessionsService.startSession(body.resourceId, body.durationMin, req.user.sub);
+  @Roles('ADMIN', 'CASHIER')
+  start(@Body() body: { resourceId: string; durationMin: number; paymentMethod?: string }, @Request() req) {
+    return this.sessionsService.startSession(body.resourceId, body.durationMin, req.user.sub, body.paymentMethod);
   }
 
   @Post('extend')
   @Roles('ADMIN')
-  extend(@Body() body: { sessionId: string; extraMin: number }, @Request() req) {
-    return this.sessionsService.extendSession(body.sessionId, body.extraMin, req.user.sub);
+  extend(@Body() body: { sessionId: string; extraMin: number; paymentMethod?: string }, @Request() req) {
+    return this.sessionsService.extendSession(body.sessionId, body.extraMin, req.user.sub, body.paymentMethod);
   }
 
   @Post('stop/:id')

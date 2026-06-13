@@ -4,7 +4,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 
 @Controller('invoices')
-@UseGuards(RolesGuard) // استخدام الحارس الموحد الجديد
+@UseGuards(RolesGuard)
 export class InvoicesController {
   constructor(private readonly invoicesService: InvoicesService) {}
 
@@ -14,9 +14,12 @@ export class InvoicesController {
   }
 
   @Post(':id/pay')
-  @Roles('ADMIN') // التأكد أن المدير فقط من يحصل المبالغ
-  pay(@Param('id', ParseIntPipe) id: number) {
-    return this.invoicesService.markAsPaid(id);
+  @Roles('ADMIN')
+  pay(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('paymentMethod') paymentMethod: string
+  ) {
+    return this.invoicesService.markAsPaid(id, paymentMethod);
   }
 
   @Post(':id/add-item')

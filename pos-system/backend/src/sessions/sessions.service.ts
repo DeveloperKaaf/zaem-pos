@@ -13,7 +13,7 @@ export class SessionsService {
     private logsService: LogsService,
   ) {}
 
-  async startSession(resourceId: string, durationMin: number, userId: string) {
+  async startSession(resourceId: string, durationMin: number, userId: string, paymentMethod?: string) {
     const resource = await this.prisma.resource.findUnique({
       where: { id: resourceId },
       include: { prices: true },
@@ -29,6 +29,7 @@ export class SessionsService {
       initialPrice = priceConfig.price;
     }
 
+    // محاولة تشغيل جهاز Tuya إذا وجد
     if (resource.tuyaDeviceId) {
       try {
         await this.tuyaService.controlDevice(resource.tuyaDeviceId, true);
@@ -61,6 +62,7 @@ export class SessionsService {
             totalAmount: initialPrice,
             isPaid: durationMin > 0,
             paymentDate: durationMin > 0 ? new Date() : null,
+            paymentMethod: durationMin > 0 ? (paymentMethod || 'CASH') : null,
             items: []
           },
         });
@@ -68,7 +70,7 @@ export class SessionsService {
         return newSession;
       });
 
-      await this.logsService.createLog(userId, 'START_SESSION', `بدء جلسة لـ ${resource.name}. المبلغ: ${initialPrice}`);
+      await this.logsService.createLog(userId, 'START_SESSION', `بدء جلسة لـ ${resource.name}. المبلغ: ${initialPrice} (${paymentMethod === 'NET' ? 'شبكة' : 'كاش'})`);
 
       // إعداد تنبيه الـ 5 دقائق (وميض الإضاءة)
       if (durationMin > 5) {
@@ -97,7 +99,7 @@ export class SessionsService {
     }
   }
 
-  async extendSession(sessionId: string, extraMin: number, userId: string) {
+  async extendSession(sessionId: string, extraMin: number, userId: string, paymentMethod?: string) {
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
       include: { resource: { include: { prices: true } }, invoice: true }
@@ -120,11 +122,17 @@ export class SessionsService {
         where: { sessionId: sessionId },
         data: {
           timeAmount: { increment: extraPrice },
-          totalAmount: { increment: extraPrice }
+          totalAmount: { increment: extraPrice },
+          // في حال كان التمديد، نفترض أن الدفع تم لهذه الجزئية
+          // لكن الحقل paymentMethod في الفاتورة يمثل الفاتورة ككل حالياً.
+          // يمكننا تحديثه أو تركه. سأقوم بتحديثه لآخر وسيلة دفع مستخدمة.
+          paymentMethod: paymentMethod || session.invoice.paymentMethod || 'CASH'
         }
       });
       return sess;
     });
+
+    await this.logsService.createLog(userId, 'EXTEND_SESSION', `تمديد جلسة لـ ${session.resource.name} بمقدار ${extraMin} دقيقة. المبلغ: ${extraPrice} (${paymentMethod === 'NET' ? 'شبكة' : 'كاش'})`);
 
     this.eventEmitter.emit('session.updated', updatedSession);
     return updatedSession;
