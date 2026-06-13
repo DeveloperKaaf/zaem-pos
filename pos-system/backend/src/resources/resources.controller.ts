@@ -19,6 +19,13 @@ export class ResourcesController {
     return this.resourcesService.create(data);
   }
 
+  @Delete('all')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  removeAll() {
+    return this.resourcesService.deleteAll();
+  }
+
   @Put(':id')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')

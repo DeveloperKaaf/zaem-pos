@@ -65,34 +65,47 @@ export class ResourcesService {
 
     if (!resource) throw new NotFoundException('هذا الجهاز غير موجود');
 
-    // منع الحذف إذا كانت هناك جلسة نشطة حالياً
     const hasActiveSession = resource.sessions.some(s => s.status === 'ACTIVE');
     if (hasActiveSession) {
       throw new BadRequestException('لا يمكن حذف الجهاز لوجود جلسة نشطة حالياً. يرجى إيقافها أولاً.');
     }
 
     try {
-      // حذف يدوي متسلسل لضمان النجاح التام في سوبابيس
       return await this.prisma.$transaction(async (tx) => {
         const sessionIds = resource.sessions.map(s => s.id);
-
-        // 1. حذف الفواتير المرتبطة بكل الجلسات
         if (sessionIds.length > 0) {
           await tx.invoice.deleteMany({ where: { sessionId: { in: sessionIds } } });
         }
-
-        // 2. حذف الجلسات
         await tx.session.deleteMany({ where: { resourceId: id } });
-
-        // 3. حذف إعدادات الأسعار
         await tx.priceConfig.deleteMany({ where: { resourceId: id } });
-
-        // 4. حذف الجهاز نفسه
         return await tx.resource.delete({ where: { id } });
       });
     } catch (error) {
       console.error('Delete Resource Error:', error);
       throw new InternalServerErrorException('حدث خطأ أثناء محاولة مسح السجلات المرتبطة من قاعدة البيانات.');
+    }
+  }
+
+  async deleteAll() {
+    const activeSessions = await this.prisma.session.count({
+      where: { status: 'ACTIVE' }
+    });
+
+    if (activeSessions > 0) {
+      throw new BadRequestException('لا يمكن حذف جميع الأجهزة لوجود جلسات نشطة حالياً. يرجى إغلاق كافة الجلسات أولاً.');
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // حذف كافة الفواتير، الجلسات، تكوينات الأسعار، ثم الأجهزة
+        await tx.invoice.deleteMany({});
+        await tx.session.deleteMany({});
+        await tx.priceConfig.deleteMany({});
+        return await tx.resource.deleteMany({});
+      });
+    } catch (error) {
+      console.error('Delete All Resources Error:', error);
+      throw new InternalServerErrorException('حدث خطأ أثناء محاولة مسح كافة الأجهزة من قاعدة البيانات.');
     }
   }
 

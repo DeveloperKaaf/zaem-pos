@@ -155,6 +155,38 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!confirm('تحذير نهائي: هل أنت متأكد من حذف جميع الأجهزة وكافة السجلات المالية والتقارير المرتبطة بها؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+        alert('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً');
+        router.push('/login');
+        return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/resources/all`, {
+        method: 'DELETE',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        alert('تم حذف جميع الأجهزة بنجاح');
+        fetchResources();
+      } else {
+        alert(`فشل الحذف الجماعي: ${data.message || 'عذراً، لا تملك الصلاحية أو هناك جلسات نشطة'}`);
+      }
+    } catch (error) {
+      alert('حدث خطأ في الاتصال بالسيرفر أثناء الحذف الجماعي');
+    }
+  };
+
   if (loading) return <div className="p-10 text-center font-bold">جاري تحميل الإعدادات...</div>;
 
   return (
@@ -163,8 +195,16 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-black text-slate-800">إدارة الأجهزة والأنواع</h1>
 
         <div className="flex gap-2">
-          <Button onClick={fetchResources} variant="outline" size="icon">
-            <RefreshCw className="h-4 w-4" />
+          <Button onClick={fetchResources} variant="outline" size="icon" className="h-12 w-12 shadow-sm">
+            <RefreshCw className="h-5 w-5" />
+          </Button>
+
+          <Button
+            onClick={handleDeleteAll}
+            variant="destructive"
+            className="h-12 px-6 font-bold shadow-lg"
+          >
+            <Trash2 className="ml-2 h-5 w-5" /> حذف الكل
           </Button>
 
           <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
@@ -204,14 +244,21 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        {resources.map((resource: any) => (
-          <ResourceSettingsCard
-            key={resource.id}
-            resource={resource}
-            onSave={(data) => handleUpdateResource(resource.id, data)}
-            onDelete={() => handleDeleteResource(resource.id)}
-          />
-        ))}
+        {resources.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-2xl border-2 border-dashed border-slate-200">
+            <Gamepad2 className="h-16 w-16 text-slate-200 mx-auto mb-4" />
+            <p className="text-slate-400 font-bold text-lg">لا يوجد أجهزة مضافة حالياً</p>
+          </div>
+        ) : (
+          resources.map((resource: any) => (
+            <ResourceSettingsCard
+              key={resource.id}
+              resource={resource}
+              onSave={(data) => handleUpdateResource(resource.id, data)}
+              onDelete={() => handleDeleteResource(resource.id)}
+            />
+          ))
+        )}
       </div>
     </div>
   );
