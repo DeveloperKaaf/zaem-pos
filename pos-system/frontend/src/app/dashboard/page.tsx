@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge"; // تم إضافة الاستيراد الناقص هنا لحل مشكلة Badge is not defined
 import { TableCard } from "@/components/dashboard/TableCard";
 import { io } from "socket.io-client";
 import { Activity, Gamepad2, Laptop, Trophy, Target, LayoutGrid, Zap } from "lucide-react";
