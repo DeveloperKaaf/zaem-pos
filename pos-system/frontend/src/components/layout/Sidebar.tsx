@@ -24,10 +24,18 @@ export function Sidebar() {
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
-    if (userData) setUser(JSON.parse(userData));
+    if (userData) {
+        try {
+            setUser(JSON.parse(userData));
+        } catch (e) {
+            console.error("User data error");
+        }
+    }
   }, []);
 
-  const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  // تحسين التحقق من الصلاحية ليكون أكثر مرونة
+  const role = user?.role?.toUpperCase();
+  const isAdmin = role === 'ADMIN' || role === 'MANAGER';
 
   const menuItems = [
     { name: 'لوحة التحكم', href: '/dashboard', icon: LayoutDashboard, show: true },
@@ -38,7 +46,7 @@ export function Sidebar() {
     { name: 'سجل العمليات', href: '/history', icon: History, show: isAdmin },
     { name: 'التقارير المالية', href: '/reports', icon: FileText, show: isAdmin },
     { name: 'إدارة الأجهزة', href: '/settings', icon: Settings, show: isAdmin },
-    { name: 'الموظفين', href: '/users', icon: Users, show: user?.role === 'ADMIN' },
+    { name: 'الموظفين', href: '/users', icon: Users, show: role === 'ADMIN' },
   ];
 
   return (
@@ -85,7 +93,7 @@ export function Sidebar() {
             </div>
             <div className="overflow-hidden">
                 <p className="text-sm font-black truncate">{user?.name || 'مستخدم'}</p>
-                <p className="text-[10px] text-slate-500 font-bold uppercase">{user?.role === 'ADMIN' ? 'مدير عام' : 'كاشير'}</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase">{role === 'ADMIN' ? 'مدير عام' : 'كاشير'}</p>
             </div>
         </div>
         <button
