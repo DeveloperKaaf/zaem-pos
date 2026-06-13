@@ -26,6 +26,12 @@ export class ReportsController {
     return this.reportsService.startShift(req.user.sub, body.floatAmount);
   }
 
+  @Post('shift/end')
+  @Roles('ADMIN', 'CASHIER')
+  endShift(@Request() req) {
+    return this.reportsService.endShift(req.user.sub);
+  }
+
   @Get('shift/status')
   @Roles('ADMIN', 'CASHIER')
   getShiftStatus(@Request() req) {

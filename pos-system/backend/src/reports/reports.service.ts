@@ -23,6 +23,13 @@ export class ReportsService {
     });
   }
 
+  async endShift(userId: string) {
+    return this.prisma.shift.updateMany({
+      where: { userId, isActive: true },
+      data: { isActive: false, endTime: new Date() }
+    });
+  }
+
   async getShiftStatus(userId: string) {
     const shift = await this.prisma.shift.findFirst({
       where: { userId, isActive: true },
@@ -158,6 +165,7 @@ export class ReportsService {
 
   async getShiftReport(userId: string) {
     const activeShift = await this.getShiftStatus(userId);
+    // إذا لم يوجد شفت نشط، نأخذ مبيعات اليوم فقط كحالة احتياطية
     const startTime = activeShift ? activeShift.startTime : startOfDay(new Date());
 
     const invoices = await this.prisma.invoice.findMany({
@@ -196,6 +204,8 @@ export class ReportsService {
 
     const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
     const floatAmount = activeShift ? activeShift.floatAmount : 0;
+
+    // المجموع الصافي = (الكاش + العهدة) - المصاريف
     const grandTotal = (cashTotal + floatAmount) - totalExpenses;
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
