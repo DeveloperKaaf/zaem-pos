@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
 
@@ -11,10 +11,25 @@ export class RolesGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
+
+    // إذا لم تكن هناك أدوار مطلوبة، اسمح بالمرور
     if (!requiredRoles) {
       return true;
     }
-    const { user } = context.switchToHttp().getRequest();
-    return requiredRoles.some((role) => user.role?.includes(role));
+
+    const request = context.switchToHttp().getRequest();
+    const user = request.user;
+
+    // تأمين الكود: إذا لم يكن المستخدم موجوداً في الطلب
+    if (!user) {
+      throw new UnauthorizedException('يجب تسجيل الدخول أولاً للقيام بهذا الإجراء');
+    }
+
+    // التأكد من وجود رتبة للمستخدم
+    if (!user.role) {
+      return false;
+    }
+
+    return requiredRoles.some((role) => user.role.toUpperCase() === role.toUpperCase());
   }
 }
