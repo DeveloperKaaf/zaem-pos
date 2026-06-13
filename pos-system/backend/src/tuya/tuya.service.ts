@@ -11,7 +11,7 @@ export class TuyaService {
   private readonly secretKey: string;
 
   constructor(private configService: ConfigService) {
-    this.baseUrl = this.configService.get('TUYA_API_URL'); // e.g., https://openapi.tuyaeu.com
+    this.baseUrl = this.configService.get('TUYA_API_URL') || 'https://openapi.tuyaeu.com';
     this.accessKey = this.configService.get('TUYA_ACCESS_KEY');
     this.secretKey = this.configService.get('TUYA_SECRET_KEY');
   }
@@ -29,9 +29,14 @@ export class TuyaService {
           sign: sign,
         },
       });
+
+      if (!response.data.success) {
+        throw new Error(`Tuya Auth Failed: ${response.data.msg}`);
+      }
+
       return response.data.result.access_token;
     } catch (error) {
-      this.logger.error('Failed to get Tuya access token', error.stack);
+      this.logger.error('Failed to get Tuya access token', error.response?.data || error.message);
       throw error;
     }
   }
@@ -45,45 +50,52 @@ export class TuyaService {
       .toUpperCase();
   }
 
-  private calcBusinessSign(clientId: string, accessToken: string, timestamp: string, nonce: string, signUrl: string, secret: string) {
-    const contentHash = crypto.createHash('sha256').update('').digest('hex');
-    const stringToSign = ['GET', contentHash, '', signUrl].join('\n');
-    const str = clientId + accessToken + timestamp + nonce + stringToSign;
-    return crypto
-      .createHmac('sha256', secret)
-      .update(str)
-      .digest('hex')
-      .toUpperCase();
-  }
-
   async controlDevice(deviceId: string, status: boolean) {
-    const accessToken = await this.getAccessToken();
-    const timestamp = Date.now().toString();
-
-    const commands = [
-      {
-        code: 'switch_1', // Standard code for Tuya smart plugs
-        value: status,
-      },
-    ];
+    if (!this.accessKey || !this.secretKey || !deviceId) {
+      this.logger.warn(`Tuya Skip: Missing configuration for device ${deviceId}`);
+      return;
+    }
 
     try {
+      const accessToken = await this.getAccessToken();
+      const timestamp = Date.now().toString();
+
+      // سنحاول إرسال الكودين switch و switch_1 لضمان عمل الجهاز أياً كان نوعه
+      const commands = [
+        { code: 'switch_1', value: status },
+        { code: 'switch', value: status }
+      ];
+
+      const body = { commands };
+      const url = `/v1.0/devices/${deviceId}/commands`;
+
+      // حساب التوقيع الخاص بالطلب
+      const sign = await this.getBusinessSign('POST', url, accessToken, timestamp, body);
+
       const response = await axios.post(
-        `${this.baseUrl}/v1.0/devices/${deviceId}/commands`,
-        { commands },
+        `${this.baseUrl}${url}`,
+        body,
         {
           headers: {
             t: timestamp,
             client_id: this.accessKey,
             sign_method: 'HMAC-SHA256',
             access_token: accessToken,
-            sign: await this.getBusinessSign('POST', `/v1.0/devices/${deviceId}/commands`, accessToken, timestamp, { commands }),
+            sign: sign,
           },
         },
       );
+
+      if (response.data.success) {
+        this.logger.log(`✅ Tuya Success: Device ${deviceId} set to ${status}`);
+      } else {
+        this.logger.error(`❌ Tuya API Error [${response.data.code}]: ${response.data.msg}`);
+      }
+
       return response.data;
     } catch (error) {
-      this.logger.error(`Failed to control Tuya device ${deviceId}`, error.stack);
+      const errorData = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+      this.logger.error(`🚨 Tuya Connection Error for ${deviceId}: ${errorData}`);
       throw error;
     }
   }
