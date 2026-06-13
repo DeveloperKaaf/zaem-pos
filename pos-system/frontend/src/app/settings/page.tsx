@@ -36,7 +36,11 @@ export default function SettingsPage() {
       const res = await fetch(`${API_BASE_URL}/resources`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.status === 401) { router.push('/login'); return; }
+      if (res.status === 401) {
+        localStorage.clear();
+        router.push('/login');
+        return;
+      }
       const data = await res.json();
       setResources(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -56,6 +60,8 @@ export default function SettingsPage() {
         return;
     }
     const token = localStorage.getItem('token');
+    if (!token) { alert('يجب تسجيل الدخول مجدداً'); router.push('/login'); return; }
+
     try {
       const res = await fetch(`${API_BASE_URL}/resources`, {
         method: 'POST',
@@ -88,6 +94,8 @@ export default function SettingsPage() {
 
   const handleUpdateResource = async (resourceId: string, updatedData: any) => {
     const token = localStorage.getItem('token');
+    if (!token) { alert('يجب تسجيل الدخول'); router.push('/login'); return; }
+
     try {
       const res = await fetch(`${API_BASE_URL}/resources/${resourceId}`, {
         method: 'PUT',
@@ -128,6 +136,12 @@ export default function SettingsPage() {
         }
       });
 
+      if (res.status === 401) {
+        alert('انتهت صلاحية الجلسة، يرجى تسجيل الدخول');
+        router.push('/login');
+        return;
+      }
+
       const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
@@ -142,8 +156,6 @@ export default function SettingsPage() {
   };
 
   if (loading) return <div className="p-10 text-center font-bold">جاري تحميل الإعدادات...</div>;
-
-  const existingTypes = Array.from(new Set(resources.map((r: any) => r.type)));
 
   return (
     <div className="p-6 space-y-6 bg-gray-50 min-h-screen" dir="rtl">
