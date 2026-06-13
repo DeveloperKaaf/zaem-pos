@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ROLES_KEY } from './roles.decorator';
 
 @Injectable()
-export class AuthAndRolesGuard implements CanActivate {
+export class RolesGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
     private jwtService: JwtService,
@@ -16,11 +16,16 @@ export class AuthAndRolesGuard implements CanActivate {
       context.getClass(),
     ]);
 
+    // إذا كانت العملية لا تتطلب رتبة معينة، نسمح بالمرور (مثل تسجيل الدخول)
+    if (!requiredRoles) {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('يجب تسجيل الدخول أولاً');
+      throw new UnauthorizedException('يجب تسجيل الدخول أولاً للوصول لهذه الصلاحية');
     }
 
     const token = authHeader.split(' ')[1];
@@ -31,8 +36,6 @@ export class AuthAndRolesGuard implements CanActivate {
       });
 
       request['user'] = payload;
-
-      if (!requiredRoles) return true;
 
       const userRole = (payload.role || '').toUpperCase();
       const hasRole = requiredRoles.some((role) => userRole === role.toUpperCase());

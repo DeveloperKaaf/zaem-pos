@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ResourcesService } from './resources.service';
-import { AuthAndRolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 
 @Controller('resources')
@@ -13,21 +13,21 @@ export class ResourcesController {
   }
 
   @Post()
-  @UseGuards(AuthAndRolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('ADMIN')
   create(@Body() data: any) {
     return this.resourcesService.create(data);
   }
 
   @Put(':id')
-  @UseGuards(AuthAndRolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('ADMIN')
   update(@Param('id') id: string, @Body() data: any) {
     return this.resourcesService.update(id, data);
   }
 
   @Delete(':id')
-  @UseGuards(AuthAndRolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('ADMIN')
   remove(@Param('id') id: string) {
     return this.resourcesService.delete(id);
