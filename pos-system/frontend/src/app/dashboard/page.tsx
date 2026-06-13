@@ -2,18 +2,33 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge"; // تم إضافة الاستيراد الناقص هنا لحل مشكلة Badge is not defined
+import { Badge } from "@/components/ui/badge";
 import { TableCard } from "@/components/dashboard/TableCard";
 import { io } from "socket.io-client";
-import { Activity, Gamepad2, Laptop, Trophy, Target, LayoutGrid, Zap } from "lucide-react";
+import { Activity, Gamepad2, Laptop, Trophy, Target, LayoutGrid, Zap, Maximize, Minimize, PlayCircle } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
+import { Button } from "@/components/ui/button";
 
 export default function Dashboard() {
   const [resources, setResources] = useState([]);
   const [availableStats, setAvailableStats] = useState<Record<string, number>>({});
   const [activeCount, setActiveCount] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isShiftStarted, setIsShiftStarted] = useState(false);
   const router = useRouter();
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    }
+  };
 
   const fetchResources = useCallback(async () => {
     const token = localStorage.getItem('token');
@@ -27,7 +42,6 @@ export default function Dashboard() {
       const data = await res.json();
       setResources(Array.isArray(data) ? data : []);
 
-      // حساب الإحصائيات للأصناف المتاحة
       const stats: Record<string, number> = {};
       let active = 0;
       (Array.isArray(data) ? data : []).forEach((r: any) => {
@@ -44,7 +58,30 @@ export default function Dashboard() {
     } catch (e) { console.error("Error fetching resources", e); }
   }, [router]);
 
-  // تجميع الأجهزة حسب النوع في صفوف مستقلة
+  useEffect(() => {
+    const shiftStatus = localStorage.getItem('shiftStarted');
+    setIsShiftStarted(shiftStatus === 'true');
+
+    fetchResources();
+    const socket = io(API_BASE_URL, { transports: ['websocket'], upgrade: false });
+    socket.on('sessionUpdate', () => fetchResources());
+
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    return () => {
+      socket.disconnect();
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, [fetchResources]);
+
+  const startShift = () => {
+    localStorage.setItem('shiftStarted', 'true');
+    setIsShiftStarted(true);
+  };
+
   const groupedResources = useMemo(() => {
     const groups: Record<string, any[]> = {};
     resources.forEach((resource: any) => {
@@ -52,19 +89,11 @@ export default function Dashboard() {
       if (!groups[type]) groups[type] = [];
       groups[type].push(resource);
     });
-    // ترتيب المجموعات لضمان بقاء الواجهة منظمة
     return Object.keys(groups).sort().reduce((acc, key) => {
       acc[key] = groups[key];
       return acc;
     }, {} as Record<string, any[]>);
   }, [resources]);
-
-  useEffect(() => {
-    fetchResources();
-    const socket = io(API_BASE_URL, { transports: ['websocket'], upgrade: false });
-    socket.on('sessionUpdate', () => fetchResources());
-    return () => { socket.disconnect(); };
-  }, [fetchResources]);
 
   const getIcon = (type: string) => {
     const t = type.toLowerCase();
@@ -76,15 +105,42 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="p-6 space-y-10 bg-slate-50 min-h-screen" dir="rtl">
+    <div className="p-6 space-y-10 bg-slate-50 min-h-screen relative" dir="rtl">
+      {!isShiftStarted && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
+          <Card className="w-full max-w-md p-8 text-center space-y-6">
+            <PlayCircle className="w-20 h-20 text-blue-500 mx-auto animate-pulse" />
+            <div className="space-y-2">
+              <h2 className="text-3xl font-black text-slate-800">بدء وردية جديدة</h2>
+              <p className="text-slate-500 font-bold">يجب بدء الشفت لتتمكن من تشغيل الأجهزة والتحكم</p>
+            </div>
+            <Button onClick={startShift} className="w-full h-16 text-xl font-black bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-500/20">
+              بدء الشفت الآن
+            </Button>
+          </Card>
+        </div>
+      )}
+
       <div className="flex justify-between items-center border-b pb-4">
-        <h1 className="text-3xl font-black text-slate-800">لوحة التحكم - مركز الزعيم</h1>
-        <div className="text-sm font-bold text-slate-500 bg-white px-4 py-2 rounded-full shadow-sm">
-          تحديث مباشر <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-ping mr-1"></span>
+        <h1 className="text-3xl font-black text-slate-800">لوحة التحكم - مركز زعيم الكرة للترفية</h1>
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={toggleFullscreen}
+            variant="outline"
+            className="flex items-center gap-2 font-bold border-2 hover:bg-slate-100 transition-all"
+          >
+            {isFullscreen ? (
+              <><Minimize className="h-5 w-5" /> خروج من الشاشة الكاملة</>
+            ) : (
+              <><Maximize className="h-5 w-5" /> ملء الشاشة</>
+            )}
+          </Button>
+          <div className="text-sm font-bold text-slate-500 bg-white px-4 py-2 rounded-full shadow-sm">
+            تحديث مباشر <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-ping mr-1"></span>
+          </div>
         </div>
       </div>
 
-      {/* بطاقات الملخص العلوي */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="الجلسات النشطة" value={activeCount} icon={<Activity className="text-red-600" />} color="border-red-500" />
         {Object.entries(availableStats).map(([type, count]) => (
@@ -92,7 +148,6 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* عرض الأجهزة مقسمة حسب النوع (كل نوع في صف مستقل) */}
       <div className="space-y-12 pb-20">
         {Object.entries(groupedResources).map(([type, items]) => (
           <section key={type} className="space-y-6">

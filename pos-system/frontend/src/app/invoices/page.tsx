@@ -191,7 +191,7 @@ export default function InvoicesPage() {
           </style>
         </head>
         <body onload="window.print();">
-          <div class="header"><h1>مركز الزعيم</h1><p>فاتورة #${inv.id}</p></div>
+          <div class="header"><h1>مركز زعيم الكرة للترفية</h1><p>فاتورة #${inv.id}</p></div>
           <p>الجهاز: ${inv.session.resource.name}</p>
           <div class="total">المبلغ الإجمالي: ${inv.totalAmount.toFixed(2)} ريال</div>
         </body>

@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
-  async getFinancialReport(range: 'daily' | 'weekly' | 'monthly') {
+  async getFinancialReport(range: 'daily' | 'weekly' | 'monthly' | 'yearly') {
     let start: Date;
     let end: Date;
     const now = new Date();
@@ -17,12 +17,17 @@ export class ReportsService {
     } else if (range === 'weekly') {
       start = startOfWeek(now);
       end = endOfWeek(now);
+    } else if (range === 'monthly') {
+      start = startOfMonth(now);
+      end = endOfMonth(now);
+    } else if (range === 'yearly') {
+      start = startOfYear(now);
+      end = endOfYear(now);
     } else {
       start = startOfMonth(now);
       end = endOfMonth(now);
     }
 
-    // 1. جلب الفواتير المحصلة
     const sessions = await this.prisma.session.findMany({
       where: {
         createdAt: { gte: start, lte: end },
@@ -34,7 +39,6 @@ export class ReportsService {
       },
     });
 
-    // 2. جلب المصروفات لنفس الفترة
     const expenses = await this.prisma.expense.findMany({
       where: {
         date: { gte: start, lte: end }
@@ -49,20 +53,18 @@ export class ReportsService {
     const buffetRevenue = sessions.reduce((acc, s) => acc + (s.invoice?.itemsAmount || 0), 0);
     const sessionCount = sessions.length;
 
-    // تجهيز بيانات الرسم البياني للمقارنة
     const chartData = [
       { name: 'دخل الألعاب', amount: gamesRevenue },
-      { name: 'دخل البوفيه', amount: buffetRevenue },
+      { name: 'دخل الكوفي شوب', amount: buffetRevenue },
       { name: 'إجمالي المصاريف', amount: totalExpenses }
     ];
 
     const pieData = [
       { name: 'الألعاب', value: gamesRevenue },
-      { name: 'البوفيه', value: buffetRevenue },
+      { name: 'الكوفي شوب', value: buffetRevenue },
       { name: 'المصاريف', value: totalExpenses }
     ];
 
-    // المورد الأكثر استخداماً
     const resourceUsage = await this.prisma.session.groupBy({
       by: ['resourceId'],
       _count: { id: true },
@@ -91,10 +93,16 @@ export class ReportsService {
           if(s.endTime && s.startTime) return acc + (s.endTime.getTime() - s.startTime.getTime());
           return acc;
       }, 0) / sessionCount / (1000 * 60)).toFixed(0) : 0,
+      sessions: sessions.map(s => ({
+        id: s.id,
+        resource: s.resource.name,
+        amount: s.invoice?.totalAmount || 0,
+        date: s.createdAt,
+        type: s.resource.type
+      }))
     };
   }
 
-  // ميزة تقفيل الشفت
   async getShiftReport(userId: string) {
     const today = startOfDay(new Date());
 
@@ -104,25 +112,52 @@ export class ReportsService {
         paymentDate: { gte: today },
         session: { userId: userId }
       },
-      include: { session: { include: { resource: true } } }
+      include: {
+        session: {
+          include: {
+            resource: true,
+            user: true
+          }
+        }
+      }
     });
 
-    const total = invoices.reduce((acc, inv) => acc + inv.totalAmount, 0);
+    const expenses = await this.prisma.expense.findMany({
+      where: {
+        date: { gte: today },
+        userId: userId
+      }
+    });
+
     const timeTotal = invoices.reduce((acc, inv) => acc + inv.timeAmount, 0);
     const itemsTotal = invoices.reduce((acc, inv) => acc + inv.itemsAmount, 0);
+    const totalRevenue = timeTotal + itemsTotal;
+    const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+    const grandTotal = totalRevenue - totalExpenses;
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
     return {
-      cashierName: userId,
+      cashierName: user?.name || userId,
       ordersCount: invoices.length,
       timeTotal,
       itemsTotal,
-      grandTotal: total,
+      totalRevenue,
+      totalExpenses,
+      grandTotal,
       invoices: invoices.map(inv => ({
         id: inv.id,
         resource: inv.session.resource.name,
         amount: inv.totalAmount,
-        date: inv.paymentDate
-      }))
+        timeAmount: inv.timeAmount,
+        itemsAmount: inv.itemsAmount,
+        items: inv.items,
+        date: inv.paymentDate,
+        startTime: inv.session.startTime,
+        endTime: inv.session.endTime,
+        durationMin: inv.session.durationMin
+      })),
+      expenses
     };
   }
 }

@@ -75,7 +75,7 @@ export default function SettingsPage() {
           type: newType,
           prices: [
             { durationMin: 60, price: 30 },
-            { durationMin: 0, price: 30 }
+            { durationMin: 0, price: 0 } // Default for open time
           ]
         })
       });
@@ -137,18 +137,11 @@ export default function SettingsPage() {
         }
       });
 
-      if (res.status === 401) {
-        alert('انتهت صلاحية الجلسة، يرجى تسجيل الدخول');
-        router.push('/login');
-        return;
-      }
-
-      const data = await res.json().catch(() => ({}));
-
       if (res.ok) {
         alert('تم الحذف بنجاح');
         fetchResources();
       } else {
+        const data = await res.json().catch(() => ({}));
         alert(`فشل الحذف: ${data.message || 'عذراً، لا تملك الصلاحية أو هناك جلسة نشطة'}`);
       }
     } catch (error) {
@@ -175,12 +168,11 @@ export default function SettingsPage() {
         }
       });
 
-      const data = await res.json().catch(() => ({}));
-
       if (res.ok) {
         alert('تم حذف جميع الأجهزة بنجاح');
         fetchResources();
       } else {
+        const data = await res.json().catch(() => ({}));
         alert(`فشل الحذف الجماعي: ${data.message || 'عذراً، لا تملك الصلاحية أو هناك جلسات نشطة'}`);
       }
     } catch (error) {
@@ -284,7 +276,7 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
 
   const updatePriceRow = (index: number, field: string, value: any) => {
     const newPrices = [...prices];
-    newPrices[index][field] = value;
+    newPrices[index][field] = Number(value);
     setPrices(newPrices);
   };
 
@@ -319,7 +311,16 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
                 <Input type="number" value={p.durationMin} onChange={(e) => updatePriceRow(index, 'durationMin', e.target.value)} />
                 <span className="text-xs text-gray-400 w-20">{p.durationMin == 0 ? 'وقت مفتوح' : 'دقيقة'}</span>
               </div>
-              <Input type="number" value={p.price} onChange={(e) => updatePriceRow(index, 'price', e.target.value)} />
+
+              {/* إخفاء حقل السعر إذا كانت المدة 0 كما في الطلب رقم 9 */}
+              {p.durationMin != 0 ? (
+                <Input type="number" value={p.price} onChange={(e) => updatePriceRow(index, 'price', e.target.value)} />
+              ) : (
+                <div className="bg-slate-100 h-10 px-3 rounded flex items-center text-slate-400 text-xs font-bold border border-dashed border-slate-300">
+                  سيتم حساب السعر بناءً على وقت البدء والإغلاق
+                </div>
+              )}
+
               <Button variant="ghost" size="icon" onClick={() => removePriceRow(index)}>
                 <Trash2 className="h-4 w-4 text-red-300" />
               </Button>

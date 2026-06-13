@@ -39,14 +39,14 @@ export function Sidebar() {
 
   const menuItems = [
     { name: 'لوحة التحكم', href: '/dashboard', icon: LayoutDashboard, show: true },
-    { name: 'شاشة الكاشير', href: '/invoices', icon: Wallet, show: true },
+    // { name: 'شاشة الكاشير', href: '/invoices', icon: Wallet, show: true }, // تم إخفاء شاشة الكاشير حسب الطلب
     { name: 'تقفيل الشفت', href: '/shift', icon: Calculator, show: true },
-    { name: 'منيو البوفيه', href: '/menu', icon: UtensilsCrossed, show: true },
+    { name: 'منيو الكوفي شوب', href: '/menu', icon: UtensilsCrossed, show: true },
     { name: 'المصروفات', href: '/expenses', icon: Receipt, show: isAdmin },
     { name: 'سجل العمليات', href: '/history', icon: History, show: isAdmin },
     { name: 'التقارير المالية', href: '/reports', icon: FileText, show: isAdmin },
     { name: 'إدارة الأجهزة', href: '/settings', icon: Settings, show: isAdmin },
-    { name: 'الموظفين', href: '/users', icon: Users, show: role === 'ADMIN' },
+    { name: 'المظفين', href: '/users', icon: Users, show: role === 'ADMIN' },
   ];
 
   return (

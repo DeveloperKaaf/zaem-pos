@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Printer, Lock, RefreshCw, Calculator, DollarSign, Wallet } from "lucide-react";
+import { Printer, RefreshCw, Calculator, DollarSign, Wallet, ArrowDownCircle, ArrowUpCircle, XCircle } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -32,6 +32,14 @@ export default function ShiftPage() {
 
   useEffect(() => { fetchShiftData(); }, []);
 
+  const handleEndShift = () => {
+    if (confirm("هل أنت متأكد من رغبتك في إنهاء الشفت؟ سيتم تسجيل خروجك وتصفير عداد الشفت.")) {
+      localStorage.removeItem('shiftStarted');
+      localStorage.clear();
+      window.location.href = '/login';
+    }
+  };
+
   const handlePrintAndClose = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow || !data) return;
@@ -41,44 +49,98 @@ export default function ShiftPage() {
         <head>
           <title>تقرير تقفيل الشفت - ${data.cashierName}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 40px; }
-            .header { text-align: center; border-bottom: 2px solid #000; margin-bottom: 20px; }
-            .stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px dashed #ccc; }
-            .total { font-size: 24px; font-weight: bold; margin-top: 20px; text-align: center; background: #eee; padding: 10px; }
-            .footer { margin-top: 50px; text-align: center; font-size: 12px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #333; }
+            .header { text-align: center; border-bottom: 3px solid #1e293b; padding-bottom: 20px; margin-bottom: 30px; }
+            .header h1 { margin: 0; color: #1e293b; font-size: 28px; }
+            .header p { margin: 5px 0; color: #64748b; }
+            .stats-container { display: grid; grid-template-cols: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+            .stat-box { border: 1px solid #e2e8f0; padding: 15px; rounded: 8px; }
+            .stat-box.highlight { background: #f8fafc; border-left: 5px solid #3b82f6; }
+            .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+            .stat-row:last-child { border-bottom: none; }
+            .total-section { margin-top: 30px; padding: 20px; background: #1e293b; color: white; border-radius: 12px; text-align: center; }
+            .total-section h2 { margin: 0; font-size: 32px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 30px; font-size: 14px; }
+            th { background: #f8fafc; color: #475569; font-weight: bold; text-align: right; padding: 12px; border: 1px solid #e2e8f0; }
+            td { padding: 10px; border: 1px solid #e2e8f0; }
+            .footer { margin-top: 60px; display: flex; justify-content: space-between; font-weight: bold; }
+            .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+            @media print { .no-print { display: none; } }
           </style>
         </head>
-        <body onload="window.print(); window.close();">
+        <body onload="window.print();">
           <div class="header">
-            <h1>مركز الزعيم للترفيه</h1>
+            <h1>مركز زعيم الكرة للترفية</h1>
             <h2>تقرير تسليم عهدة (تقفيل شفت)</h2>
             <p>تاريخ التقرير: ${format(new Date(), 'PPP p', { locale: ar })}</p>
           </div>
-          <div class="stat-row"><span>اسم الموظف:</span> <strong>${data.cashierName}</strong></div>
-          <div class="stat-row"><span>عدد الفواتير المحصلة:</span> <strong>${data.ordersCount}</strong></div>
-          <div class="stat-row"><span>إجمالي دخل الألعاب:</span> <strong>${data.timeTotal?.toFixed(2)} ريال</strong></div>
-          <div class="stat-row"><span>إجمالي دخل البوفيه:</span> <strong>${data.itemsTotal?.toFixed(2)} ريال</strong></div>
-          <div class="total">المبلغ الإجمالي للتسليم: ${data.grandTotal?.toFixed(2)} ريال</div>
 
-          <h3>تفاصيل الفواتير:</h3>
+          <div class="stats-container">
+            <div class="stat-box">
+              <div class="stat-row"><span>اسم الموظف:</span> <strong>${data.cashierName}</strong></div>
+              <div class="stat-row"><span>عدد الفواتير:</span> <strong>${data.ordersCount}</strong></div>
+              <div class="stat-row"><span>دخل الألعاب:</span> <strong>${data.timeTotal?.toFixed(2)} ريال</strong></div>
+              <div class="stat-row"><span>دخل الكوفي شوب:</span> <strong>${data.itemsTotal?.toFixed(2)} ريال</strong></div>
+            </div>
+            <div class="stat-box highlight">
+              <div class="stat-row"><span>إجمالي الإيرادات:</span> <strong>${data.totalRevenue?.toFixed(2)} ريال</strong></div>
+              <div class="stat-row" style="color: #ef4444;"><span>إجمالي المصروفات:</span> <strong>${data.totalExpenses?.toFixed(2)} ريال</strong></div>
+              <div class="stat-row" style="font-size: 1.2em; border-top: 2px solid #e2e8f0; margin-top: 10px; padding-top: 10px;">
+                <span>صافي المبلغ للتسليم:</span> <strong>${data.grandTotal?.toFixed(2)} ريال</strong>
+              </div>
+            </div>
+          </div>
+
+          <h3>تفاصيل المصروفات:</h3>
           <table>
             <thead>
-              <tr><th>رقم الفاتورة</th><th>الجهاز</th><th>المبلغ</th><th>الوقت</th></tr>
+              <tr><th>الوصف</th><th>الفئة</th><th>المبلغ</th></tr>
+            </thead>
+            <tbody>
+              ${data.expenses?.length > 0 ? data.expenses.map((e: any) => `
+                <tr>
+                  <td>${e.description}</td>
+                  <td>${e.category}</td>
+                  <td style="color: #ef4444;">${e.amount?.toFixed(2)} ريال</td>
+                </tr>
+              `).join('') : '<tr><td colspan="3" style="text-align:center;">لا توجد مصروفات</td></tr>'}
+            </tbody>
+          </table>
+
+          <h3>كشف المبيعات التفصيلي:</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>رقم الفاتورة</th>
+                <th>الصنف / الجهاز</th>
+                <th>المدة</th>
+                <th>البدء</th>
+                <th>الانتهاء</th>
+                <th>ألعاب</th>
+                <th>كوفي شوب</th>
+                <th>المجموع</th>
+              </tr>
             </thead>
             <tbody>
               ${data.invoices?.map((inv: any) => `
                 <tr>
                   <td>#${inv.id}</td>
                   <td>${inv.resource}</td>
-                  <td>${inv.amount?.toFixed(2)} ريال</td>
-                  <td>${format(new Date(inv.date), 'hh:mm a', { locale: ar })}</td>
+                  <td>${inv.durationMin || '-'} د</td>
+                  <td>${inv.startTime ? format(new Date(inv.startTime), 'hh:mm a', { locale: ar }) : '-'}</td>
+                  <td>${inv.endTime ? format(new Date(inv.endTime), 'hh:mm a', { locale: ar }) : '-'}</td>
+                  <td>${inv.timeAmount?.toFixed(2)}</td>
+                  <td>${inv.itemsAmount?.toFixed(2)}</td>
+                  <td style="font-weight:bold;">${inv.amount?.toFixed(2)} ريال</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
-          <div class="footer">توقيع المستلم: ............................</div>
+
+          <div class="footer">
+            <div>توقيع الموظف: ............................</div>
+            <div>توقيع المدير: ............................</div>
+          </div>
         </body>
       </html>
     `);
@@ -94,37 +156,56 @@ export default function ShiftPage() {
           <h1 className="text-4xl font-black text-slate-900 tracking-tighter">تقفيل الشفت والعهدة</h1>
           <p className="text-slate-500 font-bold mt-1 uppercase text-xs tracking-widest">Shift Closure & Fund Transfer</p>
         </div>
-        <Button onClick={fetchShiftData} variant="outline" className="bg-white border-2 border-slate-200 font-bold h-12 px-6">
-          <RefreshCw className={`ml-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> تحديث
-        </Button>
+        <div className="flex gap-4">
+          <Button onClick={fetchShiftData} variant="outline" className="bg-white border-2 border-slate-200 font-bold h-12 px-6">
+            <RefreshCw className={`ml-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> تحديث
+          </Button>
+          <Button onClick={handleEndShift} variant="destructive" className="font-black h-12 px-6 shadow-lg">
+            <XCircle className="ml-2 h-5 w-5" /> إنهاء الشفت
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1 space-y-6">
-          <Card className="shadow-2xl border-none bg-slate-900 text-white overflow-hidden transform transition-all hover:scale-[1.01]">
+          <Card className="shadow-2xl border-none bg-slate-900 text-white overflow-hidden">
             <CardHeader className="border-b border-white/10 p-6 bg-slate-800/50">
               <CardTitle className="flex items-center gap-3 text-blue-400 text-xl">
                 <Calculator className="h-6 w-6" /> ملخص العهدة النقدية
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-8 space-y-6">
+            <CardContent className="p-8 space-y-4">
               <div className="flex justify-between items-center bg-white/5 p-4 rounded-xl">
-                <span className="text-slate-400 font-bold">دخل الألعاب:</span>
-                <span className="text-2xl font-black text-white">{data?.timeTotal?.toFixed(2)} ريال</span>
+                <div className="flex items-center gap-2">
+                  <ArrowUpCircle className="text-emerald-400 h-5 w-5" />
+                  <span className="text-slate-400 font-bold">دخل الألعاب:</span>
+                </div>
+                <span className="text-xl font-black text-white">{data?.timeTotal?.toFixed(2)} ريال</span>
               </div>
               <div className="flex justify-between items-center bg-white/5 p-4 rounded-xl">
-                <span className="text-slate-400 font-bold">دخل البوفيه:</span>
-                <span className="text-2xl font-black text-emerald-400">{data?.itemsTotal?.toFixed(2)} ريال</span>
+                <div className="flex items-center gap-2">
+                  <ArrowUpCircle className="text-blue-400 h-5 w-5" />
+                  <span className="text-slate-400 font-bold">دخل الكوفي شوب:</span>
+                </div>
+                <span className="text-xl font-black text-blue-400">{data?.itemsTotal?.toFixed(2)} ريال</span>
               </div>
-              <div className="pt-8 border-t border-white/10 mt-4">
-                <p className="text-center text-blue-300 text-sm font-black uppercase mb-3 tracking-widest">إجمالي المبلغ للتسليم</p>
+              <div className="flex justify-between items-center bg-red-500/10 p-4 rounded-xl border border-red-500/20">
+                <div className="flex items-center gap-2">
+                  <ArrowDownCircle className="text-red-400 h-5 w-5" />
+                  <span className="text-red-200 font-bold">المصروفات:</span>
+                </div>
+                <span className="text-xl font-black text-red-400">-{data?.totalExpenses?.toFixed(2)} ريال</span>
+              </div>
+
+              <div className="pt-6 border-t border-white/10 mt-4">
+                <p className="text-center text-blue-300 text-sm font-black uppercase mb-3 tracking-widest">المبلغ الصافي للتسليم</p>
                 <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-6 rounded-2xl shadow-inner border border-white/20">
-                    <h2 className="text-6xl font-black text-center text-white tracking-tighter">
+                    <h2 className="text-5xl font-black text-center text-white tracking-tighter">
                         {data?.grandTotal?.toFixed(2)} <span className="text-xl">ريال</span>
                     </h2>
                 </div>
               </div>
-              <Button onClick={handlePrintAndClose} className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-xl font-black mt-6 shadow-2xl shadow-blue-900/50 rounded-2xl transition-all active:scale-95">
+              <Button onClick={handlePrintAndClose} className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-xl font-black mt-6 shadow-2xl shadow-blue-900/50 rounded-2xl">
                 <Printer className="ml-2 h-7 w-7" /> طباعة تقرير التسليم
               </Button>
             </CardContent>
@@ -133,7 +214,7 @@ export default function ShiftPage() {
           <Card className="shadow-lg border-none bg-white p-2">
             <CardContent className="p-4">
                 <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 font-black">
+                    <div className="h-12 w-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 font-black text-xl">
                         {data?.cashierName?.charAt(0).toUpperCase()}
                     </div>
                     <div>
@@ -151,41 +232,38 @@ export default function ShiftPage() {
                 <Wallet className="h-8 w-8 text-blue-600" /> كشف مبيعات الشفت
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-50/50">
                 <TableRow>
-                  <TableHead className="font-black text-slate-500 text-lg">رقم الفاتورة</TableHead>
-                  <TableHead className="font-black text-slate-500 text-lg">البند / الجهاز</TableHead>
-                  <TableHead className="font-black text-slate-500 text-lg text-center">المبلغ المستلم</TableHead>
-                  <TableHead className="font-black text-slate-500 text-lg text-left">الوقت</TableHead>
+                  <TableHead className="font-black text-slate-500">الفاتورة</TableHead>
+                  <TableHead className="font-black text-slate-500">الجهاز / الصنف</TableHead>
+                  <TableHead className="font-black text-slate-500">المدة</TableHead>
+                  <TableHead className="font-black text-slate-500">الوقت</TableHead>
+                  <TableHead className="font-black text-slate-500 text-center">المبلغ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data?.invoices?.map((inv: any) => (
-                  <TableRow key={inv.id} className="hover:bg-blue-50/30 border-b border-slate-100 transition-colors">
-                    <TableCell className="font-mono font-black text-slate-300 text-lg">#{inv.id}</TableCell>
-                    <TableCell className="font-black text-slate-800 text-xl">{inv.resource}</TableCell>
-                    <TableCell className="text-center">
-                        <span className="font-black text-emerald-600 text-2xl bg-emerald-50 px-4 py-1 rounded-xl border border-emerald-100">
-                            {inv.amount?.toFixed(2)} ريال
-                        </span>
+                  <TableRow key={inv.id} className="hover:bg-blue-50/30 border-b border-slate-100">
+                    <TableCell className="font-mono font-bold text-slate-400">#{inv.id}</TableCell>
+                    <TableCell>
+                      <div className="font-black text-slate-800">{inv.resource}</div>
+                      {inv.itemsAmount > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded font-bold">كوفي شوب: {inv.itemsAmount}</span>}
                     </TableCell>
-                    <TableCell className="text-left text-slate-400 font-black text-sm uppercase">
-                        {format(new Date(inv.date), 'hh:mm a', { locale: ar })}
+                    <TableCell className="font-bold text-slate-600">{inv.durationMin || 0} دقيقة</TableCell>
+                    <TableCell className="text-xs text-slate-400 font-bold">
+                        {inv.startTime ? format(new Date(inv.startTime), 'hh:mm a', { locale: ar }) : '-'}
+                        <br/>
+                        {inv.endTime ? format(new Date(inv.endTime), 'hh:mm a', { locale: ar }) : '-'}
+                    </TableCell>
+                    <TableCell className="text-center">
+                        <span className="font-black text-emerald-600 text-lg bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100">
+                            {inv.amount?.toFixed(2)}
+                        </span>
                     </TableCell>
                   </TableRow>
                 ))}
-                {(!data?.invoices || data.invoices.length === 0) && (
-                    <TableRow>
-                        <TableCell colSpan={4} className="text-center py-32">
-                            <div className="flex flex-col items-center gap-4 opacity-10">
-                                <RefreshCw className="h-24 w-24" />
-                                <p className="text-3xl font-black">لم يتم تحصيل أي مبالغ حتى الآن</p>
-                            </div>
-                        </TableCell>
-                    </TableRow>
-                )}
               </TableBody>
             </Table>
           </CardContent>
