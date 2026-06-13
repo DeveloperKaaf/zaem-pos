@@ -24,8 +24,9 @@ export class ResourcesService {
         name: data.name,
         type: data.type,
         tuyaDeviceId: data.tuyaDeviceId,
+        tuyaSwitchCode: data.tuyaSwitchCode || 'switch_1',
         prices: {
-          create: data.prices.map((p: any) => ({
+          create: (data.prices || []).map((p: any) => ({
             durationMin: parseInt(p.durationMin),
             price: parseFloat(p.price)
           }))
@@ -41,7 +42,12 @@ export class ResourcesService {
     return this.prisma.$transaction(async (tx) => {
       await tx.resource.update({
         where: { id },
-        data: { name: data.name, type: data.type, tuyaDeviceId: data.tuyaDeviceId }
+        data: {
+          name: data.name,
+          type: data.type,
+          tuyaDeviceId: data.tuyaDeviceId,
+          tuyaSwitchCode: data.tuyaSwitchCode
+        }
       });
 
       if (data.prices) {
@@ -97,7 +103,6 @@ export class ResourcesService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // حذف كافة الفواتير، الجلسات، تكوينات الأسعار، ثم الأجهزة
         await tx.invoice.deleteMany({});
         await tx.session.deleteMany({});
         await tx.priceConfig.deleteMany({});

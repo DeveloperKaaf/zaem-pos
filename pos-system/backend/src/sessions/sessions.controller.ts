@@ -10,19 +10,19 @@ export class SessionsController {
 
   @Post('start')
   @Roles('ADMIN', 'CASHIER')
-  start(@Body() body: { resourceId: string; durationMin: number; paymentMethod?: string }, @Request() req) {
-    return this.sessionsService.startSession(body.resourceId, body.durationMin, req.user.sub, body.paymentMethod);
+  start(@Body() body: { resourceId: string; durationMin: number; paymentMethod?: string; splitData?: { cash: number, net: number } }, @Request() req) {
+    return this.sessionsService.startSession(body.resourceId, body.durationMin, req.user.sub, body.paymentMethod, body.splitData);
   }
 
   @Post('extend')
   @Roles('ADMIN')
-  extend(@Body() body: { sessionId: string; extraMin: number; paymentMethod?: string }, @Request() req) {
-    return this.sessionsService.extendSession(body.sessionId, body.extraMin, req.user.sub, body.paymentMethod);
+  extend(@Body() body: { sessionId: string; extraMin: number; paymentMethod?: string; splitData?: { cash: number, net: number } }, @Request() req) {
+    return this.sessionsService.extendSession(body.sessionId, body.extraMin, req.user.sub, body.paymentMethod, body.splitData);
   }
 
   @Post('stop/:id')
   @Roles('ADMIN', 'CASHIER')
-  stop(@Param('id') id: string, @Request() req) {
-    return this.sessionsService.stopSession(id, req.user.sub);
+  stop(@Param('id') id: string, @Body() body: { paymentMethod?: string; splitData?: { cash: number, net: number } }, @Request() req) {
+    return this.sessionsService.stopSession(id, req.user.sub, body.paymentMethod, body.splitData);
   }
 }

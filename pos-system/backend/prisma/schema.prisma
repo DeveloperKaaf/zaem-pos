@@ -98,6 +98,8 @@ model Invoice {
   isPaid        Boolean  @default(false)
   paymentDate   DateTime?
   paymentMethod String?
+  cashAmount    Float    @default(0)
+  netAmount     Float    @default(0)
   items         Json?
   createdAt     DateTime @default(now())
 }

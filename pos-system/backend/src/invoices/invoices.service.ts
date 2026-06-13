@@ -11,7 +11,7 @@ export class InvoicesService {
     private logsService: LogsService,
   ) {}
 
-  async markAsPaid(invoiceId: number, paymentMethod: string = 'CASH') {
+  async markAsPaid(invoiceId: number, paymentMethod: string = 'CASH', splitData?: { cash: number, net: number }) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: { session: { include: { resource: true } } }
@@ -19,19 +19,39 @@ export class InvoicesService {
 
     if (!invoice) throw new NotFoundException('Invoice not found');
 
+    const updateData: any = {
+      isPaid: true,
+      paymentDate: new Date(),
+      paymentMethod: paymentMethod,
+    };
+
+    if (paymentMethod === 'SPLIT' && splitData) {
+      updateData.cashAmount = splitData.cash;
+      updateData.netAmount = splitData.net;
+    } else if (paymentMethod === 'CASH') {
+      updateData.cashAmount = invoice.totalAmount;
+      updateData.netAmount = 0;
+    } else if (paymentMethod === 'NET') {
+      updateData.cashAmount = 0;
+      updateData.netAmount = invoice.totalAmount;
+    }
+
     const updatedInvoice = await this.prisma.invoice.update({
       where: { id: invoiceId },
-      data: {
-        isPaid: true,
-        paymentDate: new Date(),
-        paymentMethod: paymentMethod,
-      },
+      data: updateData,
     });
+
+    let logMessage = `تحصيل مبلغ ${invoice.totalAmount} ريال لـ ${invoice.session.resource.name}`;
+    if (paymentMethod === 'SPLIT') {
+      logMessage += ` (جزئي: كاش ${splitData.cash} - شبكة ${splitData.net})`;
+    } else {
+      logMessage += ` (${paymentMethod === 'CASH' ? 'كاش' : 'شبكة'})`;
+    }
 
     await this.logsService.createLog(
       invoice.session.userId,
       'INVOICE_PAID',
-      `تحصيل مبلغ ${invoice.totalAmount} ريال لـ ${invoice.session.resource.name} (${paymentMethod === 'CASH' ? 'كاش' : 'شبكة'})`
+      logMessage
     );
 
     this.eventEmitter.emit('dashboard.updated', { type: 'INVOICE_PAID', invoiceId });
