@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogDescription
 } from "@/components/ui/dialog";
-import { Play, Square, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle } from "lucide-react";
+import { Play, Square, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle, Plus, Minus, ShoppingCart } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 
@@ -22,12 +22,16 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
   const [showPayment, setShowPayment] = useState(false);
   const [showExtendPayment, setShowExtendPayment] = useState(false);
   const [showAddOrder, setShowAddOrder] = useState(false);
+  const [showConfirmOrder, setShowConfirmOrder] = useState(false);
   const [showExtend, setShowExtend] = useState(false);
   const [products, setProducts] = useState([]);
   const [selectedPrice, setSelectedPrice] = useState<any>(null);
   const [selectedExtendPrice, setSelectedExtendPrice] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState<string>("00:00:00");
   const [currentTimeAmount, setCurrentTimeAmount] = useState<number>(0);
+
+  // سلة الطلبات المؤقتة
+  const [cart, setCart] = useState<Record<string, { product: any, quantity: number }>>({});
 
   // حالات جديدة للتحكم في الوقت المفتوح والإيقاف المؤقت
   const [isStoppingOpen, setIsStoppingOpen] = useState(false);
@@ -46,6 +50,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     setPauseStartTime(null);
     setIsPaused(false);
     setIsStoppingOpen(false);
+    setCart({}); // تصفير السلة عند تغيير الجلسة
   }, [activeSession?.id]);
 
   const handleTogglePause = () => {
@@ -118,20 +123,46 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     setProducts(data);
   };
 
-  const handleAddProductToInvoice = async (productId: string) => {
+  // منطق السلة: إضافة/نقصان الكميات
+  const updateCart = (product: any, delta: number) => {
+    setCart(prev => {
+      const current = prev[product.id] || { product, quantity: 0 };
+      const newQty = current.quantity + delta;
+      if (newQty <= 0) {
+        const { [product.id]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [product.id]: { product, quantity: newQty } };
+    });
+  };
+
+  const cartTotal = Object.values(cart).reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+
+  const handleConfirmOrders = async () => {
     const token = localStorage.getItem('token');
+    setLoading(true);
     try {
-      await fetch(`${API_BASE_URL}/invoices/${activeInvoice.id}/add-item`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ productId, quantity: 1 })
-      });
+      // إرسال جميع الطلبات من السلة للسيرفر
+      for (const item of Object.values(cart)) {
+        await fetch(`${API_BASE_URL}/invoices/${activeInvoice.id}/add-item`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ productId: item.product.id, quantity: item.quantity })
+        });
+      }
       onUpdate();
+      setCart({});
+      setShowConfirmOrder(false);
       setShowAddOrder(false);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      alert("خطأ في إضافة الطلبات");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleStartSession = async (forcedDuration?: number) => {
@@ -263,10 +294,10 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             </DialogContent>
           </Dialog>
         ) : (
-          <div className="flex flex-col gap-1 w-full z-20">
+          <div className="flex flex-col gap-1.5 w-full z-20">
             {isStoppingOpen ? (
               <div className="grid grid-cols-2 gap-1">
-                <Button className="bg-emerald-600 hover:bg-emerald-700 font-black h-9 text-[10px]" onClick={handleStopSession} disabled={loading}>
+                <Button className="bg-emerald-600 hover:bg-emerald-700 font-black h-10 text-[10px]" onClick={handleStopSession} disabled={loading}>
                   <CreditCard className="ml-1 h-3.5 w-3.5" /> تأكيد الدفع
                 </Button>
                 <Button variant="outline" className="font-bold h-9 text-[10px]" onClick={() => setIsStoppingOpen(false)}>
@@ -360,19 +391,89 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         </DialogContent>
       </Dialog>
 
+      {/* حوار المنيو مع نظام السلة - تم تغيير كلمة بوفيه إلى كوفي */}
       <Dialog open={showAddOrder} onOpenChange={setShowAddOrder}>
         <DialogContent dir="rtl" className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold">منيو الكوفي</DialogTitle>
+            <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+              <Utensils className="text-blue-600" /> منيو الكوفي - {resource.name}
+            </DialogTitle>
+            <DialogDescription>يمكنك اختيار عدة أصناف وتعديل الكميات قبل الحفظ.</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-4 max-h-[400px] overflow-y-auto">
-            {products.map((product: any) => (
-              <Button key={product.id} variant="outline" className="h-20 flex flex-col items-center justify-center gap-1" onClick={() => handleAddProductToInvoice(product.id)}>
-                <span className="font-bold text-slate-800">{product.name}</span>
-                <span className="text-blue-600 font-black">{product.price.toFixed(2)} ريال</span>
-              </Button>
-            ))}
+
+          <div className="grid grid-cols-1 gap-3 py-4 max-h-[400px] overflow-y-auto px-1">
+            {products.map((product: any) => {
+              const itemInCart = cart[product.id];
+              return (
+                <div key={product.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${itemInCart ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white'}`}>
+                  <div className="flex flex-col">
+                    <span className="font-bold text-slate-800">{product.name}</span>
+                    <span className="text-xs font-black text-blue-600">{product.price.toFixed(2)} ريال</span>
+                  </div>
+
+                  <div className="flex items-center gap-3 bg-white p-1 rounded-lg border">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => updateCart(product, -1)} disabled={!itemInCart}>
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <span className="font-black text-lg min-w-[24px] text-center">{itemInCart?.quantity || 0}</span>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-500" onClick={() => updateCart(product, 1)}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-3 pt-4 border-t">
+            <div className="flex-1">
+              <p className="text-xs font-bold text-slate-500">إجمالي الطلبات:</p>
+              <p className="text-2xl font-black text-slate-900">{cartTotal.toFixed(2)} ريال</p>
+            </div>
+            <Button
+              className="h-14 px-8 bg-blue-600 hover:bg-blue-700 font-black text-lg shadow-lg"
+              disabled={cartTotal === 0}
+              onClick={() => setShowConfirmOrder(true)}
+            >
+              استمرار <ShoppingCart className="mr-2 h-5 w-5" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* حوار تأكيد دفع طلبات الكوفي */}
+      <Dialog open={showConfirmOrder} onOpenChange={setShowConfirmOrder}>
+        <DialogContent dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-emerald-800">تأكيد استلام مبلغ الطلبات</DialogTitle>
+            <DialogDescription>سيتم إضافة الطلبات لفاتورة {resource.name} بعد التأكيد.</DialogDescription>
+          </DialogHeader>
+
+          <div className="py-6 space-y-4">
+            <div className="bg-slate-50 p-4 rounded-xl space-y-2 border">
+              {Object.values(cart).map((item: any) => (
+                <div key={item.product.id} className="flex justify-between text-sm font-bold">
+                  <span>{item.product.name} × {item.quantity}</span>
+                  <span>{(item.product.price * item.quantity).toFixed(2)} ريال</span>
+                </div>
+              ))}
+            </div>
+            <div className="text-center py-4">
+              <p className="text-slate-500 font-bold text-sm">المجموع المطلوب تحصيله:</p>
+              <p className="text-5xl font-black text-slate-900">{cartTotal.toFixed(2)} <span className="text-xl">ريال</span></p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setShowConfirmOrder(false)} className="flex-1 h-12">تعديل</Button>
+            <Button
+              onClick={handleConfirmOrders}
+              className="flex-1 h-12 text-xl bg-emerald-600 hover:bg-emerald-700 font-black shadow-lg"
+              disabled={loading}
+            >
+              تم الاستلام
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Card>
