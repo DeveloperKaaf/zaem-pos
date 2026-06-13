@@ -59,8 +59,17 @@ export default function Dashboard() {
   }, [router]);
 
   useEffect(() => {
+    const userData = localStorage.getItem('user');
+    const user = userData ? JSON.parse(userData) : null;
     const shiftStatus = localStorage.getItem('shiftStarted');
-    setIsShiftStarted(shiftStatus === 'true');
+    const shiftUser = localStorage.getItem('shiftUser');
+
+    // Check if shift is started AND it belongs to the current user
+    if (shiftStatus === 'true' && shiftUser === user?.id) {
+      setIsShiftStarted(true);
+    } else {
+      setIsShiftStarted(false);
+    }
 
     fetchResources();
     const socket = io(API_BASE_URL, { transports: ['websocket'], upgrade: false });
@@ -78,7 +87,13 @@ export default function Dashboard() {
   }, [fetchResources]);
 
   const startShift = () => {
+    const userData = localStorage.getItem('user');
+    const user = userData ? JSON.parse(userData) : null;
+
     localStorage.setItem('shiftStarted', 'true');
+    if (user?.id) {
+        localStorage.setItem('shiftUser', user.id);
+    }
     setIsShiftStarted(true);
   };
 

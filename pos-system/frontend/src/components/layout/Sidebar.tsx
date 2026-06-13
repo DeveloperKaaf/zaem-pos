@@ -33,7 +33,6 @@ export function Sidebar() {
     }
   }, []);
 
-  // تحسين التحقق من الصلاحية ليكون أكثر مرونة
   const role = user?.role?.toUpperCase();
   const isAdmin = role === 'ADMIN' || role === 'MANAGER';
 
@@ -48,6 +47,21 @@ export function Sidebar() {
     { name: 'إدارة الأجهزة', href: '/settings', icon: Settings, show: isAdmin },
     { name: 'المظفين', href: '/users', icon: Users, show: role === 'ADMIN' },
   ];
+
+  const handleLogout = () => {
+    // Keep shift state but remove auth data
+    const shiftStarted = localStorage.getItem('shiftStarted');
+    const shiftUser = localStorage.getItem('shiftUser');
+
+    localStorage.clear();
+
+    if (shiftStarted === 'true' && shiftUser === user?.id) {
+        localStorage.setItem('shiftStarted', 'true');
+        localStorage.setItem('shiftUser', shiftUser);
+    }
+
+    window.location.href = '/login';
+  };
 
   return (
     <div className="flex flex-col h-screen w-72 bg-slate-950 text-white shadow-2xl border-l border-slate-800" dir="rtl">
@@ -97,7 +111,7 @@ export function Sidebar() {
             </div>
         </div>
         <button
-          onClick={() => { localStorage.clear(); window.location.href='/login'; }}
+          onClick={handleLogout}
           className="flex items-center w-full px-4 py-3 text-sm font-bold text-red-400 rounded-xl hover:bg-red-950/30 transition-colors border border-transparent hover:border-red-900/50"
         >
           <LogOut className="ml-3 h-5 w-5" />

@@ -67,5 +67,5 @@ pause
 
 
 git add .
-git commit -m "اصلاح نهائي"
+git commit -m "اصلاح الوردية"
 git push origin main

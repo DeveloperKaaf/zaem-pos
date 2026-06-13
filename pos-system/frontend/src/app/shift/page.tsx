@@ -34,8 +34,14 @@ export default function ShiftPage() {
 
   const handleEndShift = () => {
     if (confirm("هل أنت متأكد من رغبتك في إنهاء الشفت؟ سيتم تسجيل خروجك وتصفير عداد الشفت.")) {
+      // Clear all shift related data
       localStorage.removeItem('shiftStarted');
-      localStorage.clear();
+      localStorage.removeItem('shiftUser');
+
+      // Clear session data
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+
       window.location.href = '/login';
     }
   };
