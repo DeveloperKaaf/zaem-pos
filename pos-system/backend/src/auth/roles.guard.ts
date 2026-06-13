@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
 
@@ -12,26 +12,27 @@ export class RolesGuard implements CanActivate {
       context.getClass(),
     ]);
 
+    // إذا لم تكن هناك أدوار مطلوبة (مثل العمليات المتاحة للجميع)، اسمح بالمرور
     if (!requiredRoles) {
       return true;
     }
 
     const request = context.switchToHttp().getRequest();
-    // التحقق من وجود المستخدم في الطلب (الذي وضعه JwtAuthGuard)
-    const user = request.user;
+    const user = request.user; // البيانات التي وضعها الـ JwtAuthGuard
 
     if (!user) {
-      console.error('RolesGuard: No user found in request');
-      throw new UnauthorizedException('يجب تسجيل الدخول أولاً للقيام بهذا الإجراء (لم يتم العثور على بيانات المستخدم)');
+      console.error('RolesGuard Error: No user object found in request. Check if JwtAuthGuard is applied before RolesGuard.');
+      throw new UnauthorizedException('يجب تسجيل الدخول أولاً للقيام بهذا الإجراء');
     }
 
     const userRole = (user.role || '').toUpperCase();
     const hasRole = requiredRoles.some((role) => userRole === role.toUpperCase());
 
     if (!hasRole) {
-      console.warn(`RolesGuard: User ${user.username} with role ${userRole} tried to access forbidden route`);
+      console.warn(`Access Denied: User ${user.username} with role ${userRole} attempted to access route requiring ${requiredRoles}`);
+      throw new ForbiddenException('عذراً، لا تملك الصلاحيات الكافية للقيام بهذا الإجراء');
     }
 
-    return hasRole;
+    return true;
   }
 }

@@ -5,7 +5,8 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 
 @Controller('resources')
-@UseGuards(JwtAuthGuard, RolesGuard) // تأكدنا من وضع الحارسين معاً بالترتيب الصحيح
+// ترتيب الحراس هنا مهم جداً: أولاً نتأكد من الهوية (JWT) ثم الصلاحية (Roles)
+@UseGuards(JwtAuthGuard)
 export class ResourcesController {
   constructor(private readonly resourcesService: ResourcesService) {}
 
@@ -15,18 +16,21 @@ export class ResourcesController {
   }
 
   @Post()
+  @UseGuards(RolesGuard)
   @Roles('ADMIN')
   create(@Body() data: any) {
     return this.resourcesService.create(data);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
   @Roles('ADMIN')
   update(@Param('id') id: string, @Body() data: any) {
     return this.resourcesService.update(id, data);
   }
 
   @Delete(':id')
+  @UseGuards(RolesGuard)
   @Roles('ADMIN')
   remove(@Param('id') id: string) {
     return this.resourcesService.delete(id);
