@@ -16,8 +16,9 @@ import {
 import { CheckCircle, Printer, RefreshCw, Clock, Timer, Wallet, PlusCircle, Square, AlertCircle } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
+import { io } from "socket.io-client"; // إضافة مكتبة السوكيت
 
-// --- مكون العداد الحي (تنازلي للمحدد وتصاعدي للمفتوح) ---
+// --- مكون العداد الحي ---
 function ActiveSessionRow({ session, onExtend, onStop }: { session: any, onExtend: (s: any) => void, onStop: (s: any) => void }) {
   const [displayTime, setDisplayTime] = useState("");
   const [isWarning, setIsWarning] = useState(false);
@@ -28,7 +29,6 @@ function ActiveSessionRow({ session, onExtend, onStop }: { session: any, onExten
       const now = Date.now();
 
       if (session.durationMin > 0) {
-        // وقت محدد -> عداد تنازلي
         const end = start + session.durationMin * 60 * 1000;
         const diff = end - now;
 
@@ -40,12 +40,9 @@ function ActiveSessionRow({ session, onExtend, onStop }: { session: any, onExten
           const m = Math.floor((diff % 3600000) / 60000);
           const s = Math.floor((diff % 60000) / 1000);
           setDisplayTime(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
-
-          // تنبيه بصري إذا بقي أقل من 5 دقائق
           if (diff <= 5 * 60 * 1000) setIsWarning(true);
         }
       } else {
-        // وقت مفتوح -> عداد تصاعدي
         const diff = now - start;
         const h = Math.floor(diff / 3600000);
         const m = Math.floor((diff % 3600000) / 60000);
@@ -126,8 +123,20 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+
+    // إعداد السوكيت بالبنية المستقرة لـ Render
+    const socket = io(API_BASE_URL, {
+      transports: ['websocket'],
+      upgrade: false
+    });
+
+    socket.on('sessionUpdate', () => {
+      fetchData(); // تحديث البيانات فوراً عند حدوث أي تغيير
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, [fetchData]);
 
   const handlePay = async (id: number) => {
@@ -209,7 +218,6 @@ export default function InvoicesPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-8">
-        {/* قسم المتابعة الحية */}
         <Card className="shadow-2xl border-none overflow-hidden bg-white">
           <CardHeader className="bg-slate-900 text-white p-6">
             <CardTitle className="flex items-center gap-3 text-2xl font-black">
@@ -243,7 +251,6 @@ export default function InvoicesPage() {
           </CardContent>
         </Card>
 
-        {/* قسم التحصيل النهائي */}
         <Card className="shadow-2xl border-none overflow-hidden border-t-8 border-t-emerald-500 bg-white">
           <CardHeader className="bg-emerald-50 p-6 border-b">
             <CardTitle className="flex items-center gap-3 text-2xl font-black text-emerald-900">
