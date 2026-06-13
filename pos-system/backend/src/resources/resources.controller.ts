@@ -1,11 +1,9 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ResourcesService } from './resources.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
+import { AuthAndRolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 
 @Controller('resources')
-@UseGuards(JwtAuthGuard, RolesGuard) // دمج الحارسين هنا يضمن الترتيب الصحيح
 export class ResourcesController {
   constructor(private readonly resourcesService: ResourcesService) {}
 
@@ -15,18 +13,21 @@ export class ResourcesController {
   }
 
   @Post()
+  @UseGuards(AuthAndRolesGuard)
   @Roles('ADMIN')
   create(@Body() data: any) {
     return this.resourcesService.create(data);
   }
 
   @Put(':id')
+  @UseGuards(AuthAndRolesGuard)
   @Roles('ADMIN')
   update(@Param('id') id: string, @Body() data: any) {
     return this.resourcesService.update(id, data);
   }
 
   @Delete(':id')
+  @UseGuards(AuthAndRolesGuard)
   @Roles('ADMIN')
   remove(@Param('id') id: string) {
     return this.resourcesService.delete(id);

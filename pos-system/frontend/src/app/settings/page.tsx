@@ -13,7 +13,7 @@ import {
   DialogTrigger,
   DialogFooter
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Save, RefreshCw, Gamepad2 } from "lucide-react";
+import { Plus, Trash2, Save, RefreshCw } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 
@@ -21,240 +21,134 @@ export default function SettingsPage() {
   const [resources, setResources] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAddOpen, setIsAddOpen] = useState(false);
-
-  // New Resource State
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('BILLIARD_TABLE');
-
   const router = useRouter();
 
   const fetchResources = async () => {
     const token = localStorage.getItem('token');
     if (!token) { router.push('/login'); return; }
-
     try {
       const res = await fetch(`${API_BASE_URL}/resources`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.status === 401) { router.push('/login'); return; }
       const data = await res.json();
       setResources(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("Failed to fetch:", error);
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { console.error(error); }
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchResources();
-  }, []);
-
-  const handleAddResource = async () => {
-    if (!newName || !newType) {
-        alert("يرجى إدخال الاسم ونوع اللعبة");
-        return;
-    }
-    const token = localStorage.getItem('token');
-    try {
-      const res = await fetch(`${API_BASE_URL}/resources`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          name: newName,
-          type: newType,
-          prices: [
-            { durationMin: 60, price: 30 },
-            { durationMin: 0, price: 30 }
-          ]
-        })
-      });
-      if (res.ok) {
-        setIsAddOpen(false);
-        setNewName('');
-        setNewType('BILLIARD_TABLE');
-        fetchResources();
-      }
-    } catch (error) {
-      alert('خطأ في إضافة الجهاز');
-    }
-  };
-
-  const handleUpdateResource = async (resourceId: string, updatedData: any) => {
-    const token = localStorage.getItem('token');
-    try {
-      const res = await fetch(`${API_BASE_URL}/resources/${resourceId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(updatedData)
-      });
-      if (res.ok) {
-        alert('تم حفظ التعديلات بنجاح');
-        fetchResources();
-      }
-    } catch (error) {
-      alert('حدث خطأ أثناء الحفظ');
-    }
-  };
+  useEffect(() => { fetchResources(); }, []);
 
   const handleDeleteResource = async (resourceId: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذا الجهاز نهائياً؟')) return;
+    if (!confirm('هل أنت متأكد من حذف هذا الجهاز وكل سجلاته المالية نهائياً؟')) return;
 
     const token = localStorage.getItem('token');
+    if (!token) {
+        alert('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً');
+        router.push('/login');
+        return;
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/resources/${resourceId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
       });
+
+      const data = await res.json();
+
       if (res.ok) {
+        alert('تم الحذف بنجاح');
         fetchResources();
       } else {
-        const data = await res.json();
-        alert(data.message || 'لا يمكن حذف جهاز عليه جلسة نشطة');
+        alert(`فشل الحذف: ${data.message || 'عذراً، لا تملك الصلاحية أو هناك جلسة نشطة'}`);
       }
     } catch (error) {
-      alert('خطأ في عملية الحذف');
+      alert('حدث خطأ في الاتصال بالسيرفر');
+    }
+  };
+
+  const handleAddResource = async () => {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API_BASE_URL}/resources`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        name: newName,
+        type: newType,
+        prices: [{ durationMin: 60, price: 30 }, { durationMin: 0, price: 30 }]
+      })
+    });
+    if (res.ok) {
+        setIsAddOpen(false);
+        setNewName('');
+        fetchResources();
+    } else {
+        const data = await res.json();
+        alert(data.message || 'خطأ في الإضافة');
     }
   };
 
   if (loading) return <div className="p-10 text-center font-bold">جاري تحميل الإعدادات...</div>;
 
-  const existingTypes = Array.from(new Set(resources.map((r: any) => r.type)));
-
   return (
     <div className="p-6 space-y-6 bg-gray-50 min-h-screen" dir="rtl">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-black text-slate-800">إدارة الأجهزة والأنواع</h1>
-
+        <h1 className="text-3xl font-black text-slate-800">إدارة الأجهزة</h1>
         <div className="flex gap-2">
-          <Button onClick={fetchResources} variant="outline" size="icon">
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-
+          <Button onClick={fetchResources} variant="outline" size="icon"><RefreshCw className="h-4 w-4" /></Button>
           <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-700 h-12 px-6 shadow-lg font-bold">
-                <Plus className="ml-2 h-5 w-5" /> إضافة صنف جديد
-              </Button>
-            </DialogTrigger>
+            <DialogTrigger asChild><Button className="bg-blue-600 font-bold h-12 px-6 shadow-lg"><Plus className="ml-2 h-5 w-5" /> إضافة جهاز جديد</Button></DialogTrigger>
             <DialogContent dir="rtl">
-              <DialogHeader>
-                <DialogTitle className="text-xl font-bold">إضافة جهاز أو طاولة جديدة</DialogTitle>
-              </DialogHeader>
+              <DialogHeader><DialogTitle className="text-xl font-bold">إضافة جهاز أو طاولة</DialogTitle></DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label>الاسم (مثال: طاولة 10، فرفيرة 2)</Label>
-                  <Input
-                    placeholder="أدخل الاسم هنا"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
+                    <Label>اسم الجهاز</Label>
+                    <Input placeholder="مثال: طاولة بلياردو 1" value={newName} onChange={(e) => setNewName(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>نوع اللعبة / التصنيف</Label>
-                  <Input
-                    placeholder="مثال: VR, PING_PONG"
-                    value={newType}
-                    onChange={(e) => setNewType(e.target.value)}
-                  />
+                    <Label>التصنيف</Label>
+                    <Input placeholder="مثال: PS5" value={newType} onChange={(e) => setNewType(e.target.value)} />
                 </div>
               </div>
-              <DialogFooter>
-                <Button onClick={handleAddResource} className="w-full h-12 bg-blue-600 font-bold">تأكيد الإضافة</Button>
-              </DialogFooter>
+              <DialogFooter><Button onClick={handleAddResource} className="w-full h-12 bg-blue-600 font-bold">تأكيد الإضافة</Button></DialogFooter>
             </DialogContent>
           </Dialog>
         </div>
       </div>
-
-      <div className="grid grid-cols-1 gap-6">
-        {resources.map((resource: any) => (
-          <ResourceSettingsCard
-            key={resource.id}
-            resource={resource}
-            onSave={(data) => handleUpdateResource(resource.id, data)}
-            onDelete={() => handleDeleteResource(resource.id)}
-          />
+      <div className="grid grid-cols-1 gap-4">
+        {resources.length === 0 ? (
+            <div className="text-center py-20 text-slate-400 font-bold">لا يوجد أجهزة مضافة حالياً</div>
+        ) : resources.map((resource: any) => (
+          <Card key={resource.id} className="p-6 border-r-4 border-blue-600 shadow-sm hover:shadow-md transition-shadow bg-white">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 font-black">
+                    {resource.name.charAt(0)}
+                </div>
+                <div>
+                    <h3 className="text-xl font-black text-slate-800">{resource.name}</h3>
+                    <p className="text-xs text-blue-500 font-bold uppercase tracking-wider">{resource.type}</p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                className="text-red-400 hover:text-red-600 hover:bg-red-50 font-bold"
+                onClick={() => handleDeleteResource(resource.id)}
+              >
+                <Trash2 className="ml-2 h-5 w-5" /> حذف الجهاز نهائياً
+              </Button>
+            </div>
+          </Card>
         ))}
       </div>
     </div>
-  );
-}
-
-function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, onSave: (data: any) => void, onDelete: () => void }) {
-  const [name, setName] = useState(resource.name);
-  const [type, setType] = useState(resource.type);
-  const [tuyaId, setTuyaId] = useState(resource.tuyaDeviceId || '');
-  const [prices, setPrices] = useState(resource.prices || []);
-
-  const addPriceRow = () => {
-    setPrices([...prices, { durationMin: 60, price: 30 }]);
-  };
-
-  const removePriceRow = (index: number) => {
-    setPrices(prices.filter((_, i) => i !== index));
-  };
-
-  const updatePriceRow = (index: number, field: string, value: any) => {
-    const newPrices = [...prices];
-    newPrices[index][field] = value;
-    setPrices(newPrices);
-  };
-
-  return (
-    <Card className="border-r-4 border-r-blue-600 shadow-sm bg-white overflow-hidden">
-      <CardHeader>
-        <CardTitle className="flex justify-between items-center text-xl font-bold text-blue-900">
-          <div className="flex items-center gap-4 flex-1">
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="font-bold text-lg bg-white w-64" />
-            <Input value={type} onChange={(e) => setType(e.target.value)} className="bg-gray-50 text-sm w-40" />
-          </div>
-          <div className="flex gap-2 mr-4">
-            <Button variant="ghost" size="sm" onClick={onDelete} className="text-red-500 hover:bg-red-50">
-              <Trash2 className="ml-2 h-4 w-4" /> حذف
-            </Button>
-            <Button variant="outline" size="sm" onClick={addPriceRow} className="text-blue-600 border-blue-600">
-              <Plus className="ml-2 h-4 w-4" /> إضافة وقت
-            </Button>
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4 font-bold text-sm text-gray-600 bg-gray-50 p-2 rounded">
-            <div>المدة (دقائق)</div>
-            <div>السعر (ريال)</div>
-            <div>حذف</div>
-          </div>
-          {prices.map((p: any, index: number) => (
-            <div key={index} className="grid grid-cols-3 gap-4 items-center">
-              <div className="flex items-center gap-2">
-                <Input type="number" value={p.durationMin} onChange={(e) => updatePriceRow(index, 'durationMin', e.target.value)} />
-                <span className="text-xs text-gray-400 w-20">{p.durationMin == 0 ? 'وقت مفتوح' : 'دقيقة'}</span>
-              </div>
-              <Input type="number" value={p.price} onChange={(e) => updatePriceRow(index, 'price', e.target.value)} />
-              <Button variant="ghost" size="icon" onClick={() => removePriceRow(index)}>
-                <Trash2 className="h-4 w-4 text-red-300" />
-              </Button>
-            </div>
-          ))}
-          <div className="pt-4 border-t flex justify-between items-end">
-             <div className="space-y-2">
-                <Label className="text-gray-500">Smart Life (Tuya Device ID)</Label>
-                <Input value={tuyaId} onChange={(e) => setTuyaId(e.target.value)} className="w-80 bg-white" />
-             </div>
-             <Button className="bg-blue-600 hover:bg-blue-700 px-8 h-12 font-bold" onClick={() => onSave({ name, type, tuyaDeviceId: tuyaId, prices })}>
-                <Save className="ml-2 h-5 w-5" /> حفظ التعديلات
-             </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

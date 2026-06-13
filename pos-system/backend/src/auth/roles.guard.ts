@@ -1,38 +1,54 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
 import { ROLES_KEY } from './roles.decorator';
 
 @Injectable()
-export class RolesGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+export class AuthAndRolesGuard implements CanActivate {
+  constructor(
+    private reflector: Reflector,
+    private jwtService: JwtService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
-    // إذا لم تكن هناك أدوار مطلوبة (مثل العمليات المتاحة للجميع)، اسمح بالمرور
-    if (!requiredRoles) {
-      return true;
-    }
-
     const request = context.switchToHttp().getRequest();
-    const user = request.user; // البيانات التي وضعها الـ JwtAuthGuard
+    const authHeader = request.headers.authorization;
 
-    if (!user) {
-      console.error('RolesGuard Error: No user object found in request. Check if JwtAuthGuard is applied before RolesGuard.');
-      throw new UnauthorizedException('يجب تسجيل الدخول أولاً للقيام بهذا الإجراء');
+    // 1. التأكد من وجود الـ Token
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedException('يجب تسجيل الدخول أولاً');
     }
 
-    const userRole = (user.role || '').toUpperCase();
-    const hasRole = requiredRoles.some((role) => userRole === role.toUpperCase());
+    const token = authHeader.split(' ')[1];
 
-    if (!hasRole) {
-      console.warn(`Access Denied: User ${user.username} with role ${userRole} attempted to access route requiring ${requiredRoles}`);
-      throw new ForbiddenException('عذراً، لا تملك الصلاحيات الكافية للقيام بهذا الإجراء');
+    try {
+      // 2. فك تشفير الـ Token والتعرف على المستخدم
+      const payload = await this.jwtService.verifyAsync(token, {
+        secret: process.env.JWT_SECRET || 'SUPER_SECRET_KEY',
+      });
+
+      request['user'] = payload;
+
+      // 3. إذا لم تكن العملية تتطلب رتبة معينة (مثل العرض فقط)، اسمح بالمرور
+      if (!requiredRoles) return true;
+
+      // 4. التحقق من الرتبة (ADMIN)
+      const userRole = (payload.role || '').toUpperCase();
+      const hasRole = requiredRoles.some((role) => userRole === role.toUpperCase());
+
+      if (!hasRole) {
+        throw new ForbiddenException('عذراً، هذه العملية للمدير فقط');
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Security Guard Error:', e.message);
+      throw new UnauthorizedException('انتهت صلاحية الجلسة أو السيكرت غير متطابق. يرجى تسجيل الخروج والدخول مجدداً.');
     }
-
-    return true;
   }
 }
