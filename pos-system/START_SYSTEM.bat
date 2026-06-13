@@ -67,5 +67,5 @@ pause
 
 
 git add .
-git commit -m "نسخة جديدة"
+git commit -m "اصلاح جديد"
 git push origin main
