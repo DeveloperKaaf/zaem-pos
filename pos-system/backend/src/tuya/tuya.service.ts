@@ -20,7 +20,6 @@ export class TuyaService {
     }
   }
 
-  // الدالة الرسمية لحساب التوقيع حسب معايير Tuya الحديثة
   private calculateSign(method: string, url: string, accessToken: string, timestamp: string, body: any = null): string {
     const contentHash = crypto.createHash('sha256').update(body ? JSON.stringify(body) : '').digest('hex');
     const stringToSign = [method, contentHash, '', url].join('\n');
@@ -37,7 +36,6 @@ export class TuyaService {
     const timestamp = Date.now().toString();
     const url = '/v1.0/token?grant_type=1';
 
-    // في طلب التوكن، يكون accessToken فارغاً
     const sign = this.calculateSign('GET', url, '', timestamp);
 
     try {
@@ -61,7 +59,7 @@ export class TuyaService {
     }
   }
 
-  async controlDevice(deviceId: string, status: boolean) {
+  async controlDevice(deviceId: string, status: boolean, switchCode: string = 'switch_1') {
     if (!this.accessKey || !this.secretKey || !deviceId) return;
 
     try {
@@ -69,10 +67,12 @@ export class TuyaService {
       const timestamp = Date.now().toString();
       const url = `/v1.0/devices/${deviceId.trim()}/commands`;
 
+      // Use the provided switchCode, fallback to switch_1
+      const code = switchCode || 'switch_1';
+
       const body = {
         commands: [
-          { code: 'switch_1', value: status },
-          { code: 'switch', value: status }
+          { code: code, value: status }
         ]
       };
 
@@ -90,7 +90,7 @@ export class TuyaService {
       });
 
       if (response.data.success) {
-        this.logger.log(`✅ Tuya Success: Device ${deviceId} -> ${status ? 'ON' : 'OFF'}`);
+        this.logger.log(`✅ Tuya Success: Device ${deviceId} [${code}] -> ${status ? 'ON' : 'OFF'}`);
       } else {
         this.logger.error(`❌ Tuya API Error [${response.data.code}]: ${response.data.msg}`);
       }

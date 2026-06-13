@@ -27,6 +27,7 @@ model Resource {
   status        String         @default("AVAILABLE")
 
   tuyaDeviceId  String?
+  tuyaSwitchCode String?       @default("switch_1")
   tuyaProductId String?
   tuyaUuid      String?
 
@@ -78,7 +79,7 @@ model Expense {
 model Shift {
   id          String    @id @default(uuid())
   userId      String
-  user        User      @relation(fields: [userId], references: [id])
+  user         User      @relation(fields: [userId], references: [id])
   startTime   DateTime  @default(now())
   endTime     DateTime?
   floatAmount Float     @default(0)

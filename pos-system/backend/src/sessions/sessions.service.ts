@@ -29,10 +29,10 @@ export class SessionsService {
       initialPrice = priceConfig.price;
     }
 
-    // محاولة تشغيل جهاز Tuya إذا وجد
+    // محاولة تشغيل جهاز Tuya إذا وجد باستخدام كود المفتاح المحدد
     if (resource.tuyaDeviceId) {
       try {
-        await this.tuyaService.controlDevice(resource.tuyaDeviceId, true);
+        await this.tuyaService.controlDevice(resource.tuyaDeviceId, true, resource.tuyaSwitchCode);
       } catch (e) {
         console.error('Tuya Error:', e.message);
       }
@@ -78,8 +78,8 @@ export class SessionsService {
         setTimeout(async () => {
           if (resource.tuyaDeviceId) {
             console.log(`Warning flash for ${resource.name}`);
-            await this.tuyaService.controlDevice(resource.tuyaDeviceId, false);
-            setTimeout(() => this.tuyaService.controlDevice(resource.tuyaDeviceId, true), 500);
+            await this.tuyaService.controlDevice(resource.tuyaDeviceId, false, resource.tuyaSwitchCode);
+            setTimeout(() => this.tuyaService.controlDevice(resource.tuyaDeviceId, true, resource.tuyaSwitchCode), 500);
           }
         }, warningTime);
       }
@@ -123,9 +123,6 @@ export class SessionsService {
         data: {
           timeAmount: { increment: extraPrice },
           totalAmount: { increment: extraPrice },
-          // في حال كان التمديد، نفترض أن الدفع تم لهذه الجزئية
-          // لكن الحقل paymentMethod في الفاتورة يمثل الفاتورة ككل حالياً.
-          // يمكننا تحديثه أو تركه. سأقوم بتحديثه لآخر وسيلة دفع مستخدمة.
           paymentMethod: paymentMethod || session.invoice.paymentMethod || 'CASH'
         }
       });
@@ -157,7 +154,7 @@ export class SessionsService {
 
     if (session.resource.tuyaDeviceId) {
       try {
-        await this.tuyaService.controlDevice(session.resource.tuyaDeviceId, false);
+        await this.tuyaService.controlDevice(session.resource.tuyaDeviceId, false, session.resource.tuyaSwitchCode);
       } catch (e) {
         console.error('Tuya Stop Error:', e.message);
       }
