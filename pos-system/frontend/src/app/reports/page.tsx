@@ -22,7 +22,7 @@ import {
   Cell,
   Legend
 } from 'recharts';
-import { FileDown, TrendingUp, Users, Clock, DollarSign, Utensils, Gamepad2, Landmark, TrendingDown, Calendar } from "lucide-react";
+import { FileDown, TrendingUp, Users, Clock, DollarSign, Utensils, Gamepad2, Landmark, TrendingDown, Calendar, Wallet, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
@@ -58,6 +58,7 @@ export default function ReportsPage() {
   }, [range]);
 
   const COLORS = ['#3b82f6', '#10b981', '#ef4444', '#f59e0b'];
+  const PAYMENT_COLORS = ['#10b981', '#3b82f6'];
 
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
@@ -73,16 +74,19 @@ export default function ReportsPage() {
             body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; color: #333; }
             .header { text-align: center; border-bottom: 3px solid #000; padding-bottom: 20px; margin-bottom: 40px; }
             .header h1 { font-size: 32px; margin: 0; }
-            .info-grid { display: grid; grid-template-cols: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }
-            .info-card { border: 2px solid #eee; padding: 20px; border-radius: 12px; text-align: center; }
-            .info-card h3 { margin: 0 0 10px 0; color: #666; font-size: 16px; }
-            .info-card p { margin: 0; font-size: 24px; font-weight: bold; }
+            .info-grid { display: grid; grid-template-cols: repeat(4, 1fr); gap: 15px; margin-bottom: 40px; }
+            .info-card { border: 2px solid #eee; padding: 15px; border-radius: 12px; text-align: center; }
+            .info-card h3 { margin: 0 0 10px 0; color: #666; font-size: 14px; }
+            .info-card p { margin: 0; font-size: 20px; font-weight: bold; }
             .profit { color: #10b981; }
             .expense { color: #ef4444; }
-            table { width: 100%; border-collapse: collapse; margin-top: 40px; }
-            th { background: #f8fafc; padding: 15px; text-align: right; border: 1px solid #ddd; }
-            td { padding: 12px; border: 1px solid #ddd; }
+            .cash { color: #059669; }
+            .net { color: #2563eb; }
+            table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+            th { background: #f8fafc; padding: 12px; text-align: right; border: 1px solid #ddd; font-size: 14px; }
+            td { padding: 10px; border: 1px solid #ddd; font-size: 13px; }
             .footer { margin-top: 60px; text-align: center; color: #999; font-size: 12px; }
+            .badge { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; border: 1px solid #ddd; }
             @media print { .no-print { display: none; } }
           </style>
         </head>
@@ -99,13 +103,22 @@ export default function ReportsPage() {
               <p>${data.totalRevenue?.toFixed(2)} ريال</p>
             </div>
             <div class="info-card">
-              <h3>إجمالي المصروفات</h3>
+              <h3 class="cash">إجمالي الكاش</h3>
+              <p class="cash">${data.cashRevenue?.toFixed(2)} ريال</p>
+            </div>
+            <div class="info-card">
+              <h3 class="net">إجمالي الشبكة</h3>
+              <p class="net">${data.netRevenue?.toFixed(2)} ريال</p>
+            </div>
+            <div class="info-card">
+              <h3>المصروفات</h3>
               <p class="expense">${data.totalExpenses?.toFixed(2)} ريال</p>
             </div>
-            <div class="info-card" style="background: #f0fdf4;">
-              <h3>صافي الربح</h3>
-              <p class="profit">${data.netProfit?.toFixed(2)} ريال</p>
-            </div>
+          </div>
+
+          <div style="background: #f0fdf4; padding: 20px; border-radius: 12px; text-align: center; border: 2px solid #10b981; margin-bottom: 30px;">
+             <h3 style="margin:0; color: #064e3b;">صافي الربح النهائي</h3>
+             <p style="margin:5px 0 0 0; font-size: 32px; font-weight: 900; color: #10b981;">${data.netProfit?.toFixed(2)} ريال</p>
           </div>
 
           <h3>تفصيل مصادر الدخل:</h3>
@@ -122,14 +135,14 @@ export default function ReportsPage() {
           <h3>سجل العمليات في هذه الفترة:</h3>
           <table>
             <thead>
-              <tr><th>التاريخ</th><th>البيان / الجهاز</th><th>النوع</th><th>المبلغ</th></tr>
+              <tr><th>التاريخ</th><th>البيان / الجهاز</th><th>نوع الدفع</th><th>المبلغ</th></tr>
             </thead>
             <tbody>
               ${data.sessions?.map((s: any) => `
                 <tr>
                   <td>${format(new Date(s.date), 'yyyy-MM-dd HH:mm', { locale: ar })}</td>
                   <td>${s.resource}</td>
-                  <td>${s.type}</td>
+                  <td><span class="badge">${s.paymentMethod === 'NET' ? 'شبكة 💳' : 'كاش 💵'}</span></td>
                   <td>${s.amount?.toFixed(2)} ريال</td>
                 </tr>
               `).join('')}
@@ -170,24 +183,30 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
           title="إجمالي الدخل"
-          value={`${data?.totalRevenue?.toFixed(2)} ريال`}
+          value={`${data?.totalRevenue?.toFixed(2)}`}
           icon={<DollarSign className="text-white" />}
-          bgColor="bg-indigo-600"
+          bgColor="bg-slate-900"
         />
         <SummaryCard
-          title="إجمالي المصروفات"
-          value={`${data?.totalExpenses?.toFixed(2)} ريال`}
-          icon={<TrendingDown className="text-white" />}
-          bgColor="bg-rose-600"
+          title="إجمالي الكاش"
+          value={`${data?.cashRevenue?.toFixed(2)}`}
+          icon={<Wallet className="text-white" />}
+          bgColor="bg-emerald-600"
+        />
+        <SummaryCard
+          title="إجمالي الشبكة"
+          value={`${data?.netRevenue?.toFixed(2)}`}
+          icon={<CreditCard className="text-white" />}
+          bgColor="bg-blue-600"
         />
         <SummaryCard
           title="صافي الربح"
-          value={`${data?.netProfit?.toFixed(2)} ريال`}
+          value={`${data?.netProfit?.toFixed(2)}`}
           icon={<Landmark className="text-white" />}
-          bgColor="bg-emerald-600"
+          bgColor="bg-indigo-600"
         />
       </div>
 
@@ -218,13 +237,13 @@ export default function ReportsPage() {
 
         <Card className="shadow-xl border-none">
           <CardHeader className="bg-white border-b">
-            <CardTitle className="text-xl font-bold text-slate-800">تحليل مصادر الدخل</CardTitle>
+            <CardTitle className="text-xl font-bold text-slate-800">تحليل وسيلة الدفع</CardTitle>
           </CardHeader>
           <CardContent className="h-[400px] pt-8">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={data?.pieData}
+                  data={data?.paymentData}
                   cx="50%"
                   cy="50%"
                   innerRadius={80}
@@ -232,8 +251,8 @@ export default function ReportsPage() {
                   paddingAngle={8}
                   dataKey="value"
                 >
-                  {data?.pieData?.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  {data?.paymentData?.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={PAYMENT_COLORS[index % PAYMENT_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip />
@@ -251,7 +270,7 @@ export default function ReportsPage() {
             </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="flex items-center gap-4 bg-slate-100 p-6 rounded-2xl">
                     <div className="h-14 w-14 bg-blue-500 rounded-full flex items-center justify-center text-white">
                         <Users className="h-8 w-8" />
@@ -270,6 +289,15 @@ export default function ReportsPage() {
                         <p className="text-3xl font-black">{data?.topResource}</p>
                     </div>
                 </div>
+                <div className="flex items-center gap-4 bg-slate-100 p-6 rounded-2xl">
+                    <div className="h-14 w-14 bg-rose-500 rounded-full flex items-center justify-center text-white">
+                        <TrendingDown className="h-8 w-8" />
+                    </div>
+                    <div>
+                        <p className="text-slate-500 font-bold">المصروفات المسجلة</p>
+                        <p className="text-3xl font-black">{data?.totalExpenses?.toFixed(2)} ريال</p>
+                    </div>
+                </div>
             </div>
         </CardContent>
       </Card>
@@ -280,13 +308,13 @@ export default function ReportsPage() {
 function SummaryCard({ title, value, icon, bgColor }: any) {
   return (
     <Card className={`${bgColor} border-none shadow-xl overflow-hidden`}>
-      <CardContent className="p-8">
+      <CardContent className="p-6">
         <div className="flex justify-between items-start">
-          <div className="space-y-2">
-            <p className="text-xs font-black uppercase tracking-widest text-white/70">{title}</p>
-            <h3 className="text-4xl font-black text-white">{value}</h3>
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-widest text-white/70">{title}</p>
+            <h3 className="text-2xl font-black text-white">{value} <span className="text-xs">ريال</span></h3>
           </div>
-          <div className="p-4 bg-white/20 rounded-3xl backdrop-blur-xl border border-white/10 shadow-inner">
+          <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-xl border border-white/10 shadow-inner">
             {icon}
           </div>
         </div>

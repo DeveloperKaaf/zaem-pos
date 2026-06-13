@@ -192,15 +192,25 @@ export default function InvoicesPage() {
         <head>
           <title>فاتورة - ${inv.session.resource.name}</title>
           <style>
-            body { font-family: Arial; padding: 20px; text-align: center; }
-            .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-            .total { font-size: 24px; font-weight: bold; margin-top: 20px; }
+            body { font-family: Arial; padding: 20px; text-align: center; line-height: 1.6; }
+            .header { border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 20px; }
+            .total { font-size: 28px; font-weight: bold; margin-top: 20px; border-top: 2px dashed #000; padding-top: 10px; }
+            .detail { font-size: 16px; margin: 10px 0; }
+            .payment-badge { background: #eee; padding: 5px 15px; border-radius: 5px; font-weight: bold; margin-top: 10px; display: inline-block; }
           </style>
         </head>
         <body onload="window.print();">
-          <div class="header"><h1>مركز زعيم الكرة للترفية</h1><p>فاتورة #${inv.id}</p></div>
-          <p>الجهاز: ${inv.session.resource.name}</p>
+          <div class="header">
+            <h1>مركز زعيم الكرة للترفية</h1>
+            <p>فاتورة رقم #${inv.id}</p>
+            <p>تاريخ: ${new Date().toLocaleString('ar-SA')}</p>
+          </div>
+          <div class="detail">الجهاز: <strong>${inv.session.resource.name}</strong></div>
+          <div class="detail">وقت اللعب: ${inv.timeAmount.toFixed(2)} ريال</div>
+          <div class="detail">الطلبات (كوفي): ${inv.itemsAmount.toFixed(2)} ريال</div>
           <div class="total">المبلغ الإجمالي: ${inv.totalAmount.toFixed(2)} ريال</div>
+          <div class="payment-badge">طريقة الدفع: ${inv.paymentMethod === 'NET' ? 'شبكة 💳' : 'كاش 💵'}</div>
+          <p style="margin-top: 30px; font-size: 12px; color: #666;">شكراً لزيارتكم</p>
         </body>
       </html>
     `);

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Printer, RefreshCw, Calculator, DollarSign, Wallet, ArrowDownCircle, ArrowUpCircle, XCircle } from "lucide-react";
+import { Printer, RefreshCw, Calculator, DollarSign, Wallet, ArrowDownCircle, ArrowUpCircle, XCircle, CreditCard, Landmark } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -34,14 +34,10 @@ export default function ShiftPage() {
 
   const handleEndShift = () => {
     if (confirm("هل أنت متأكد من رغبتك في إنهاء الشفت؟ سيتم تسجيل خروجك وتصفير عداد الشفت.")) {
-      // Clear all shift related data
       localStorage.removeItem('shiftStarted');
       localStorage.removeItem('shiftUser');
-
-      // Clear session data
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-
       window.location.href = '/login';
     }
   };
@@ -60,7 +56,7 @@ export default function ShiftPage() {
             .header h1 { margin: 0; color: #1e293b; font-size: 28px; }
             .header p { margin: 5px 0; color: #64748b; }
             .stats-container { display: grid; grid-template-cols: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
-            .stat-box { border: 1px solid #e2e8f0; padding: 15px; rounded: 8px; }
+            .stat-box { border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; }
             .stat-box.highlight { background: #f8fafc; border-left: 5px solid #3b82f6; }
             .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
             .stat-row:last-child { border-bottom: none; }
@@ -70,7 +66,7 @@ export default function ShiftPage() {
             th { background: #f8fafc; color: #475569; font-weight: bold; text-align: right; padding: 12px; border: 1px solid #e2e8f0; }
             td { padding: 10px; border: 1px solid #e2e8f0; }
             .footer { margin-top: 60px; display: flex; justify-content: space-between; font-weight: bold; }
-            .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+            .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; border: 1px solid #ddd; }
             @media print { .no-print { display: none; } }
           </style>
         </head>
@@ -90,6 +86,8 @@ export default function ShiftPage() {
             </div>
             <div class="stat-box highlight">
               <div class="stat-row"><span>إجمالي الإيرادات:</span> <strong>${data.totalRevenue?.toFixed(2)} ريال</strong></div>
+              <div class="stat-row" style="color: #059669;"><span>إجمالي الكاش (Cash):</span> <strong>${data.cashTotal?.toFixed(2)} ريال</strong></div>
+              <div class="stat-row" style="color: #2563eb;"><span>إجمالي الشبكة (Network):</span> <strong>${data.netTotal?.toFixed(2)} ريال</strong></div>
               <div class="stat-row" style="color: #ef4444;"><span>إجمالي المصروفات:</span> <strong>${data.totalExpenses?.toFixed(2)} ريال</strong></div>
               <div class="stat-row" style="font-size: 1.2em; border-top: 2px solid #e2e8f0; margin-top: 10px; padding-top: 10px;">
                 <span>صافي المبلغ للتسليم:</span> <strong>${data.grandTotal?.toFixed(2)} ريال</strong>
@@ -97,7 +95,7 @@ export default function ShiftPage() {
             </div>
           </div>
 
-          <h3>تفاصيل المصروفات:</h3>
+          <h3>تفصيل المصروفات:</h3>
           <table>
             <thead>
               <tr><th>الوصف</th><th>الفئة</th><th>المبلغ</th></tr>
@@ -118,12 +116,11 @@ export default function ShiftPage() {
             <thead>
               <tr>
                 <th>رقم الفاتورة</th>
-                <th>الصنف / الجهاز</th>
-                <th>المدة</th>
-                <th>البدء</th>
-                <th>الانتهاء</th>
+                <th>الجهاز / الصنف</th>
+                <th>طريقة الدفع</th>
+                <th>الوقت</th>
                 <th>ألعاب</th>
-                <th>كوفي شوب</th>
+                <th>كوفي</th>
                 <th>المجموع</th>
               </tr>
             </thead>
@@ -132,9 +129,8 @@ export default function ShiftPage() {
                 <tr>
                   <td>#${inv.id}</td>
                   <td>${inv.resource}</td>
-                  <td>${inv.durationMin || '-'} د</td>
-                  <td>${inv.startTime ? format(new Date(inv.startTime), 'hh:mm a', { locale: ar }) : '-'}</td>
-                  <td>${inv.endTime ? format(new Date(inv.endTime), 'hh:mm a', { locale: ar }) : '-'}</td>
+                  <td><span class="badge">${inv.paymentMethod === 'NET' ? 'شبكة 💳' : 'كاش 💵'}</span></td>
+                  <td>${inv.date ? format(new Date(inv.date), 'hh:mm a', { locale: ar }) : '-'}</td>
                   <td>${inv.timeAmount?.toFixed(2)}</td>
                   <td>${inv.itemsAmount?.toFixed(2)}</td>
                   <td style="font-weight:bold;">${inv.amount?.toFixed(2)} ريال</td>
@@ -183,17 +179,17 @@ export default function ShiftPage() {
             <CardContent className="p-8 space-y-4">
               <div className="flex justify-between items-center bg-white/5 p-4 rounded-xl">
                 <div className="flex items-center gap-2">
-                  <ArrowUpCircle className="text-emerald-400 h-5 w-5" />
-                  <span className="text-slate-400 font-bold">دخل الألعاب:</span>
+                  <Wallet className="text-emerald-400 h-5 w-5" />
+                  <span className="text-slate-400 font-bold">إجمالي الكاش:</span>
                 </div>
-                <span className="text-xl font-black text-white">{data?.timeTotal?.toFixed(2)} ريال</span>
+                <span className="text-xl font-black text-white">{data?.cashTotal?.toFixed(2)} ريال</span>
               </div>
               <div className="flex justify-between items-center bg-white/5 p-4 rounded-xl">
                 <div className="flex items-center gap-2">
-                  <ArrowUpCircle className="text-blue-400 h-5 w-5" />
-                  <span className="text-slate-400 font-bold">دخل الكوفي شوب:</span>
+                  <Landmark className="text-blue-400 h-5 w-5" />
+                  <span className="text-slate-400 font-bold">إجمالي الشبكة:</span>
                 </div>
-                <span className="text-xl font-black text-blue-400">{data?.itemsTotal?.toFixed(2)} ريال</span>
+                <span className="text-xl font-black text-blue-400">{data?.netTotal?.toFixed(2)} ريال</span>
               </div>
               <div className="flex justify-between items-center bg-red-500/10 p-4 rounded-xl border border-red-500/20">
                 <div className="flex items-center gap-2">
@@ -216,20 +212,6 @@ export default function ShiftPage() {
               </Button>
             </CardContent>
           </Card>
-
-          <Card className="shadow-lg border-none bg-white p-2">
-            <CardContent className="p-4">
-                <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 font-black text-xl">
-                        {data?.cashierName?.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">أمين الصندوق الحالي</p>
-                        <p className="text-lg font-black text-slate-800 leading-none">{data?.cashierName}</p>
-                    </div>
-                </div>
-            </CardContent>
-          </Card>
         </div>
 
         <Card className="lg:col-span-2 shadow-2xl border-none overflow-hidden bg-white">
@@ -244,7 +226,7 @@ export default function ShiftPage() {
                 <TableRow>
                   <TableHead className="font-black text-slate-500">الفاتورة</TableHead>
                   <TableHead className="font-black text-slate-500">الجهاز / الصنف</TableHead>
-                  <TableHead className="font-black text-slate-500">المدة</TableHead>
+                  <TableHead className="font-black text-slate-500">طريقة الدفع</TableHead>
                   <TableHead className="font-black text-slate-500">الوقت</TableHead>
                   <TableHead className="font-black text-slate-500 text-center">المبلغ</TableHead>
                 </TableRow>
@@ -255,13 +237,15 @@ export default function ShiftPage() {
                     <TableCell className="font-mono font-bold text-slate-400">#{inv.id}</TableCell>
                     <TableCell>
                       <div className="font-black text-slate-800">{inv.resource}</div>
-                      {inv.itemsAmount > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded font-bold">كوفي شوب: {inv.itemsAmount}</span>}
+                      {inv.itemsAmount > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded font-bold">كوفي: {inv.itemsAmount}</span>}
                     </TableCell>
-                    <TableCell className="font-bold text-slate-600">{inv.durationMin || 0} دقيقة</TableCell>
+                    <TableCell>
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${inv.paymentMethod === 'NET' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
+                        {inv.paymentMethod === 'NET' ? 'شبكة 💳' : 'كاش 💵'}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-xs text-slate-400 font-bold">
-                        {inv.startTime ? format(new Date(inv.startTime), 'hh:mm a', { locale: ar }) : '-'}
-                        <br/>
-                        {inv.endTime ? format(new Date(inv.endTime), 'hh:mm a', { locale: ar }) : '-'}
+                        {inv.date ? format(new Date(inv.date), 'hh:mm a', { locale: ar }) : '-'}
                     </TableCell>
                     <TableCell className="text-center">
                         <span className="font-black text-emerald-600 text-lg bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100">
