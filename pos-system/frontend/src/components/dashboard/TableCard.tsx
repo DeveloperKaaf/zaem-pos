@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogDescription
 } from "@/components/ui/dialog";
-import { Timer, Play, Square, Receipt, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop } from "lucide-react";
+import { Timer, Play, Square, Receipt, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 
@@ -37,10 +37,11 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
   // دالة لاختيار الأيقونة المناسبة للصنف
   const getResourceIcon = () => {
     const type = (resource.type || "").toLowerCase();
-    if (type.includes('بلاي ستيشن')) return <Gamepad2 className="h-20 w-20" />;
-    if (type.includes('بلياردو')) return <Target className="h-20 w-20" />;
-    if (type.includes('تنس طاولة')) return <Trophy className="h-20 w-20" />;
-    return <Laptop className="h-20 w-20" />;
+    if (type.includes('بلاي ستيشن')) return <Gamepad2 className="h-20 w-20 text-blue-500/20" />;
+    if (type.includes('بلياردو')) return <Target className="h-20 w-20 text-emerald-500/20" />;
+    if (type.includes('تنس طاولة')) return <Trophy className="h-20 w-20 text-orange-500/20" />;
+    if (type.includes('فرفيرة') || type.includes('فرفيره')) return <Zap className="h-20 w-20 text-purple-500/20" />;
+    return <Laptop className="h-20 w-20 text-slate-500/20" />;
   };
 
   useEffect(() => {
@@ -172,9 +173,9 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         </Badge>
       </CardHeader>
 
-      <CardContent className="pt-8 text-center h-48 flex flex-col justify-center bg-white">
+      <CardContent className="pt-8 text-center h-48 flex flex-col justify-center bg-white relative">
         {!isAvailable ? (
-          <div className="space-y-3">
+          <div className="space-y-3 z-10">
             <div className={`text-5xl font-mono font-black ${timeLeft === "انتهى الوقت" ? "text-red-600 animate-bounce" : "text-slate-900"}`}>
               {timeLeft}
             </div>
@@ -186,9 +187,9 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2 text-slate-300">
-            {getResourceIcon()}
-            <p className="text-2xl font-black text-slate-400 mt-2 uppercase tracking-wide">
+          <div className="flex flex-col items-center gap-2">
+            <div className="mb-2">{getResourceIcon()}</div>
+            <p className="text-3xl font-black text-slate-800 uppercase tracking-tighter">
               {resource.type}
             </p>
           </div>
@@ -218,7 +219,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             </DialogContent>
           </Dialog>
         ) : (
-          <div className="flex flex-col gap-2 w-full">
+          <div className="flex flex-col gap-2 w-full z-20">
             <div className="grid grid-cols-2 gap-2">
                 <Button variant="outline" className="h-12 font-bold border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => setShowExtend(true)}>
                   <PlusCircle className="ml-2 h-4 w-4" /> تمديد
