@@ -58,57 +58,54 @@ export class ResourcesService {
   }
 
   async delete(id: string) {
-    // 1. جلب الجهاز مع كافة الارتباطات
     const resource = await this.prisma.resource.findUnique({
       where: { id },
       include: {
         sessions: {
           include: { invoice: true }
-        },
-        prices: true
+        }
       }
     });
 
-    if (!resource) throw new NotFoundException('الجهاز غير موجود بالفعل');
+    if (!resource) throw new NotFoundException('هذا الجهاز غير موجود');
 
-    // 2. منع الحذف إذا كانت هناك جلسة مفتوحة حالياً
     const hasActiveSession = resource.sessions.some(s => s.status === 'ACTIVE');
     if (hasActiveSession) {
-      throw new BadRequestException('لا يمكن حذف الجهاز لوجود جلسة نشطة حالياً. يرجى إغلاق الجلسة أولاً.');
+      throw new BadRequestException('لا يمكن حذف الجهاز لوجود جلسة نشطة حالياً. أغلق الجلسة أولاً.');
     }
 
     try {
-      // 3. الحذف اليدوي المتسلسل (Manual Cascade) لضمان النجاح في Supabase
+      // الحذف اليدوي المتسلسل لفك كافة الارتباطات في Supabase
       return await this.prisma.$transaction(async (tx) => {
         const sessionIds = resource.sessions.map(s => s.id);
 
-        // أ. حذف الفواتير المرتبطة بكل الجلسات (سواء مدفوعة أو لا)
+        // 1. حذف الفواتير المرتبطة
         if (sessionIds.length > 0) {
           await tx.invoice.deleteMany({
             where: { sessionId: { in: sessionIds } }
           });
         }
 
-        // ب. حذف كافة الجلسات المرتبطة بالجهاز
+        // 2. حذف الجلسات المرتبطة
         await tx.session.deleteMany({
           where: { resourceId: id }
         });
 
-        // ج. حذف إعدادات الأسعار الخاصة بالجهاز
+        // 3. حذف إعدادات الأسعار
         await tx.priceConfig.deleteMany({
           where: { resourceId: id }
         });
 
-        // د. الحذف النهائي للجهاز
+        // 4. حذف الجهاز نفسه
         return await tx.resource.delete({
           where: { id }
         });
       }, {
-        timeout: 10000 // زيادة مهلة العملية لضمان التنفيذ في السيرفر السحابي
+        timeout: 10000 // مهلة كافية للسيرفر السحابي
       });
     } catch (error) {
-      console.error('DETAILED DELETE ERROR:', error);
-      throw new InternalServerErrorException('فشل الحذف بسبب قيود حماية البيانات. تأكد من تحديث قاعدة البيانات عبر Prisma DB Push.');
+      console.error('Delete Resource Error:', error);
+      throw new InternalServerErrorException(`فشل الحذف بسبب قيود حماية البيانات في سوبابيس. يرجى التأكد من تنفيذ أمر npx prisma db push`);
     }
   }
 
