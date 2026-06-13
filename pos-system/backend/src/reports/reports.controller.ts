@@ -1,24 +1,34 @@
-import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, UseGuards, Request } from '@nestjs/common';
 import { ReportsService } from './reports.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 
 @Controller('reports')
-@UseGuards(JwtAuthGuard)
+@UseGuards(RolesGuard)
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Get()
-  getReport(@Query('range') range: 'daily' | 'weekly' | 'monthly') {
-    return this.reportsService.getFinancialReport(range || 'daily');
+  @Roles('ADMIN')
+  getFinancial(@Query('range') range: 'daily' | 'weekly' | 'monthly' | 'yearly') {
+    return this.reportsService.getFinancialReport(range);
   }
 
   @Get('shift')
-  async getShift(@Request() req) {
-    // req.user contains { sub: userId, username, role } from JwtAuthGuard
-    const report = await this.reportsService.getShiftReport(req.user.sub);
-    return {
-        ...report,
-        cashierName: req.user.username // Use the name from the token
-    };
+  @Roles('ADMIN', 'CASHIER')
+  getShift(@Request() req) {
+    return this.reportsService.getShiftReport(req.user.sub);
+  }
+
+  @Post('shift/start')
+  @Roles('ADMIN', 'CASHIER')
+  startShift(@Body() body: { floatAmount: number }, @Request() req) {
+    return this.reportsService.startShift(req.user.sub, body.floatAmount);
+  }
+
+  @Get('shift/status')
+  @Roles('ADMIN', 'CASHIER')
+  getShiftStatus(@Request() req) {
+    return this.reportsService.getShiftStatus(req.user.sub);
   }
 }

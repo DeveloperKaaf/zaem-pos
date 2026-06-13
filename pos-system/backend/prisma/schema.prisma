@@ -15,6 +15,7 @@ model User {
   name      String
   role      String   @default("CASHIER")
   sessions  Session[]
+  shifts    Shift[]
   logs      ActionLog[]
   createdAt DateTime @default(now())
 }
@@ -72,6 +73,17 @@ model Expense {
   category    String
   date        DateTime @default(now())
   userId      String?
+}
+
+model Shift {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  startTime   DateTime  @default(now())
+  endTime     DateTime?
+  floatAmount Float     @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
 }
 
 model Invoice {

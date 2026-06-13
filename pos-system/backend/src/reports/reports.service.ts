@@ -6,6 +6,31 @@ import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
+  async startShift(userId: string, floatAmount: number) {
+    // إغلاق أي شفت نشط سابق لهذا المستخدم احتياطاً
+    await this.prisma.shift.updateMany({
+      where: { userId, isActive: true },
+      data: { isActive: false, endTime: new Date() }
+    });
+
+    return this.prisma.shift.create({
+      data: {
+        userId,
+        floatAmount,
+        isActive: true,
+        startTime: new Date()
+      }
+    });
+  }
+
+  async getShiftStatus(userId: string) {
+    const shift = await this.prisma.shift.findFirst({
+      where: { userId, isActive: true },
+      orderBy: { startTime: 'desc' }
+    });
+    return shift;
+  }
+
   async getFinancialReport(range: 'daily' | 'weekly' | 'monthly' | 'yearly') {
     let start: Date;
     let end: Date;
@@ -45,6 +70,12 @@ export class ReportsService {
       }
     });
 
+    const shifts = await this.prisma.shift.findMany({
+      where: {
+        startTime: { gte: start, lte: end }
+      }
+    });
+
     const totalRevenue = sessions.reduce((acc, s) => acc + (s.invoice?.totalAmount || 0), 0);
     const cashRevenue = sessions.reduce((acc, s) => {
       return s.invoice?.paymentMethod === 'CASH' || !s.invoice?.paymentMethod
@@ -57,6 +88,7 @@ export class ReportsService {
         : acc;
     }, 0);
 
+    const totalFloat = shifts.reduce((acc, s) => acc + s.floatAmount, 0);
     const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
     const netProfit = totalRevenue - totalExpenses;
 
@@ -100,6 +132,7 @@ export class ReportsService {
       cashRevenue,
       netRevenue,
       totalExpenses,
+      totalFloat,
       netProfit,
       gamesRevenue,
       buffetRevenue,
@@ -124,12 +157,13 @@ export class ReportsService {
   }
 
   async getShiftReport(userId: string) {
-    const today = startOfDay(new Date());
+    const activeShift = await this.getShiftStatus(userId);
+    const startTime = activeShift ? activeShift.startTime : startOfDay(new Date());
 
     const invoices = await this.prisma.invoice.findMany({
       where: {
         isPaid: true,
-        paymentDate: { gte: today },
+        paymentDate: { gte: startTime },
         session: { userId: userId }
       },
       include: {
@@ -144,7 +178,7 @@ export class ReportsService {
 
     const expenses = await this.prisma.expense.findMany({
       where: {
-        date: { gte: today },
+        date: { gte: startTime },
         userId: userId
       }
     });
@@ -161,7 +195,8 @@ export class ReportsService {
     }, 0);
 
     const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
-    const grandTotal = totalRevenue - totalExpenses;
+    const floatAmount = activeShift ? activeShift.floatAmount : 0;
+    const grandTotal = (cashTotal + floatAmount) - totalExpenses;
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
@@ -173,8 +208,10 @@ export class ReportsService {
       totalRevenue,
       cashTotal,
       netTotal,
+      floatAmount,
       totalExpenses,
       grandTotal,
+      shiftStartTime: activeShift?.startTime,
       invoices: invoices.map(inv => ({
         id: inv.id,
         resource: inv.session.resource.name,
