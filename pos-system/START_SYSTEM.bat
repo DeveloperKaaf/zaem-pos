@@ -67,5 +67,5 @@ pause
 
 
 git add .
-git commit -m "إصلاح خطأ حذف الأجهزة وتنظيف البيانات المرتبطة"
+git commit -m "آخر نسخة"
 git push origin main
