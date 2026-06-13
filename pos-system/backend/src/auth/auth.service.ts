@@ -14,17 +14,23 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { username },
     });
+
     if (!user || !(await bcrypt.compare(pass, user.password))) {
       throw new UnauthorizedException();
     }
-    const payload = { sub: user.id, username: user.username, role: user.role };
+
+    // التأكد من أن الرتبة نص نظيف وبأحرف كبيرة
+    const cleanRole = user.role.trim().toUpperCase();
+
+    const payload = { sub: user.id, username: user.username, role: cleanRole };
+
     return {
       access_token: await this.jwtService.signAsync(payload),
       user: {
         id: user.id,
         username: user.username,
         name: user.name,
-        role: user.role,
+        role: cleanRole,
       },
     };
   }

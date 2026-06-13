@@ -29,9 +29,18 @@ export default function LoginPage() {
 
       if (res.ok) {
         const data = await res.json();
+
+        // تنظيف شامل للذاكرة القديمة قبل حفظ البيانات الجديدة
+        localStorage.clear();
+
         localStorage.setItem('token', data.access_token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        router.push('/dashboard');
+
+        // طباعة الرتبة في الكونسول للتأكد (يمكنك رؤيتها عبر F12)
+        console.log("تم تسجيل الدخول بنجاح برتبة:", data.user.role);
+
+        // التوجه للوحة التحكم مع إجبار الصفحة على التحديث
+        window.location.href = '/dashboard';
       } else {
         const errorData = await res.json().catch(() => ({}));
         setError(errorData.message || 'خطأ في اسم المستخدم أو كلمة المرور');
