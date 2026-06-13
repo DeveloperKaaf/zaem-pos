@@ -3,7 +3,7 @@ import { Response } from 'express';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
-  catch(exception: unknown, host: ArgumentsHost) {
+  catch(exception: any, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
 
@@ -12,15 +12,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    // تعديل ذكي: إذا كان الخطأ غير معروف، نظهر رسالة الخطأ الأصلية (للإصلاح)
     const message =
       exception instanceof HttpException
         ? (exception.getResponse() as any).message || exception.message
-        : 'حدث خطأ غير متوقع في النظام';
+        : (exception.message || 'حدث خطأ غير متوقع في النظام');
+
+    console.error('Backend Error:', exception);
 
     response.status(status).json({
       statusCode: status,
       timestamp: new Date().toISOString(),
       message: Array.isArray(message) ? message[0] : message,
+      // أضفنا هذا الحقل مؤقتاً لنعرف التفاصيل في المتصفح
+      errorDetail: exception?.code || 'No Code'
     });
   }
 }
