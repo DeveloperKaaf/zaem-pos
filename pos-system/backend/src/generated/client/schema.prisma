@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String      @id @default(uuid())
+  username  String      @unique
+  password  String
+  name      String
+  role      String      @default("CASHIER")
+  sessions  Session[]
+  logs      ActionLog[]
+  createdAt DateTime    @default(now())
+}
+
+model Resource {
+  id     String @id @default(uuid())
+  name   String
+  type   String
+  status String @default("AVAILABLE")
+
+  tuyaDeviceId  String?
+  tuyaProductId String?
+  tuyaUuid      String?
+
+  prices    PriceConfig[]
+  sessions  Session[]
+  createdAt DateTime      @default(now())
+}
+
+model PriceConfig {
+  id          String   @id @default(uuid())
+  resourceId  String
+  resource    Resource @relation(fields: [resourceId], references: [id])
+  durationMin Int
+  price       Float
+}
+
+model Session {
+  id          String    @id @default(uuid())
+  resourceId  String
+  resource    Resource  @relation(fields: [resourceId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  startTime   DateTime  @default(now())
+  endTime     DateTime?
+  durationMin Int
+  status      String    @default("ACTIVE")
+  invoice     Invoice?
+  createdAt   DateTime  @default(now())
+}
+
+model Invoice {
+  id          Int       @id @default(autoincrement())
+  sessionId   String    @unique
+  session     Session   @relation(fields: [sessionId], references: [id])
+  totalAmount Float
+  tax         Float     @default(0)
+  isPaid      Boolean   @default(false)
+  paymentDate DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model ActionLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  details   String?
+  timestamp DateTime @default(now())
+}

@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  name      String
+  role      String   @default("CASHIER")
+  sessions  Session[]
+  logs      ActionLog[]
+  createdAt DateTime @default(now())
+}
+
+model Resource {
+  id            String         @id @default(uuid())
+  name          String
+  type          String
+  status        String         @default("AVAILABLE")
+
+  tuyaDeviceId  String?
+  tuyaProductId String?
+  tuyaUuid      String?
+
+  prices        PriceConfig[]
+  sessions      Session[]
+  createdAt     DateTime       @default(now())
+}
+
+model PriceConfig {
+  id          String   @id @default(uuid())
+  resourceId  String
+  resource    Resource @relation(fields: [resourceId], references: [id])
+  durationMin Int
+  price       Float
+}
+
+model Session {
+  id           String        @id @default(uuid())
+  resourceId   String
+  resource     Resource      @relation(fields: [resourceId], references: [id])
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  startTime    DateTime      @default(now())
+  endTime      DateTime?
+  durationMin  Int
+  status       String        @default("ACTIVE")
+  invoice      Invoice?
+  createdAt    DateTime      @default(now())
+}
+
+model Product {
+  id        String   @id @default(uuid())
+  name      String
+  price     Float
+  category  String?
+  stock     Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  description String
+  amount      Float
+  category    String   // رواتب، فواتير، بضاعة، صيانة
+  date        DateTime @default(now())
+  userId      String?
+}
+
+model Invoice {
+  id           Int      @id @default(autoincrement())
+  sessionId    String   @unique
+  session      Session  @relation(fields: [sessionId], references: [id])
+  timeAmount   Float    @default(0)
+  itemsAmount  Float    @default(0)
+  totalAmount  Float    @default(0)
+  tax          Float    @default(0)
+  isPaid       Boolean  @default(false)
+  paymentDate  DateTime?
+  items        Json?
+  createdAt    DateTime @default(now())
+}
+
+model ActionLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  details   String?
+  timestamp DateTime @default(now())
+}
