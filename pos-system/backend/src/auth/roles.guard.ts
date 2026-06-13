@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ROLES_KEY } from './roles.decorator';
 
 @Injectable()
-export class RolesGuard implements CanActivate {
+export class AuthAndRolesGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
     private jwtService: JwtService,
@@ -19,36 +19,31 @@ export class RolesGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
 
-    // 1. استخراج الـ Token من الهيدر
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('لم يتم العثور على تصريح الدخول. يرجى تسجيل الدخول مجدداً.');
+      throw new UnauthorizedException('يجب تسجيل الدخول أولاً');
     }
 
     const token = authHeader.split(' ')[1];
 
     try {
-      // 2. فك التشفير باستخدام السكرت الموحد
       const payload = await this.jwtService.verifyAsync(token, {
         secret: process.env.JWT_SECRET || 'SUPER_SECRET_KEY',
       });
 
       request['user'] = payload;
 
-      // 3. إذا كانت العملية لا تتطلب صلاحيات خاصة، اسمح بالمرور
       if (!requiredRoles) return true;
 
-      // 4. التحقق من الرتبة (ADMIN)
       const userRole = (payload.role || '').toUpperCase();
       const hasRole = requiredRoles.some((role) => userRole === role.toUpperCase());
 
       if (!hasRole) {
-        throw new ForbiddenException('عذراً، هذه الصلاحية للمدير فقط');
+        throw new ForbiddenException('عذراً، هذه العملية للمدير فقط');
       }
 
       return true;
     } catch (e) {
-      console.error('Guard Error:', e.message);
-      throw new UnauthorizedException('انتهت صلاحية الجلسة أو حدث خطأ في التشفير. يرجى تسجيل الخروج والدخول مجدداً.');
+      throw new UnauthorizedException('انتهت صلاحية الجلسة. يرجى تسجيل الدخول مجدداً.');
     }
   }
 }
