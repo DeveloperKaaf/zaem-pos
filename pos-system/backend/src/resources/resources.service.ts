@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -36,7 +36,7 @@ export class ResourcesService {
 
   async update(id: string, data: any) {
     const resource = await this.prisma.resource.findUnique({ where: { id } });
-    if (!resource) throw new NotFoundException('Resource not found');
+    if (!resource) throw new NotFoundException('الجهاز غير موجود');
 
     return this.prisma.$transaction(async (tx) => {
       await tx.resource.update({
@@ -64,19 +64,41 @@ export class ResourcesService {
   async delete(id: string) {
     const resource = await this.prisma.resource.findUnique({
       where: { id },
-      include: { sessions: true }
+      include: {
+        sessions: {
+          include: { invoice: true }
+        }
+      }
     });
 
-    if (!resource) throw new NotFoundException('Resource not found');
+    if (!resource) throw new NotFoundException('الجهاز غير موجود');
 
     const hasActiveSession = resource.sessions.some(s => s.status === 'ACTIVE');
-    if (hasActiveSession) throw new Error('Cannot delete resource with active session');
+    if (hasActiveSession) {
+      throw new BadRequestException('لا يمكن حذف الجهاز لوجود جلسة نشطة حالياً. قم بإيقاف الجلسة أولاً.');
+    }
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.priceConfig.deleteMany({ where: { resourceId: id } });
-      await tx.invoice.deleteMany({ where: { session: { resourceId: id } } });
-      await tx.session.deleteMany({ where: { resourceId: id } });
-      return tx.resource.delete({ where: { id } });
+      // 1. حذف الفواتير المرتبطة بجلسات هذا الجهاز
+      const sessionIds = resource.sessions.map(s => s.id);
+      await tx.invoice.deleteMany({
+        where: { sessionId: { in: sessionIds } }
+      });
+
+      // 2. حذف الجلسات
+      await tx.session.deleteMany({
+        where: { resourceId: id }
+      });
+
+      // 3. حذف إعدادات الأسعار
+      await tx.priceConfig.deleteMany({
+        where: { resourceId: id }
+      });
+
+      // 4. حذف الجهاز نفسه
+      return tx.resource.delete({
+        where: { id }
+      });
     });
   }
 
@@ -90,7 +112,6 @@ export class ResourcesService {
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
 
-    // إيراد اليوم
     const dailyRevenue = await this.prisma.invoice.aggregate({
       where: {
         createdAt: { gte: today },
@@ -99,7 +120,6 @@ export class ResourcesService {
       _sum: { totalAmount: true }
     });
 
-    // إيراد الشهر
     const monthlyRevenue = await this.prisma.invoice.aggregate({
       where: {
         createdAt: { gte: monthStart },
