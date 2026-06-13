@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TuyaService } from '../tuya/tuya.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -19,60 +19,71 @@ export class SessionsService {
       include: { prices: true },
     });
 
-    if (!resource) throw new NotFoundException('Resource not found');
-    if (resource.status !== 'AVAILABLE') throw new Error('Resource is not available');
+    if (!resource) throw new NotFoundException('الجهاز غير موجود');
+    if (resource.status !== 'AVAILABLE') throw new BadRequestException('الجهاز مشغول حالياً');
 
     let initialPrice = 0;
     if (durationMin > 0) {
       const priceConfig = resource.prices.find((p) => p.durationMin === durationMin);
-      if (!priceConfig) throw new Error('Price configuration not found');
+      if (!priceConfig) throw new BadRequestException('إعدادات السعر لهذا الوقت غير موجودة');
       initialPrice = priceConfig.price;
     }
 
+    // محاولة تشغيل الجهاز عبر تويا (مع معالجة الخطأ لكي لا ينهار النظام)
     if (resource.tuyaDeviceId) {
-      await this.tuyaService.controlDevice(resource.tuyaDeviceId, true);
+      try {
+        await this.tuyaService.controlDevice(resource.tuyaDeviceId, true);
+      } catch (e) {
+        console.error('Tuya Error:', e.message);
+        // لا نلقي خطأ هنا، نكتفي بالتسجيل في السجلات لكي تستمر الجلسة
+      }
     }
 
-    const session = await this.prisma.$transaction(async (tx) => {
-      const newSession = await tx.session.create({
-        data: {
-          resourceId,
-          userId,
-          durationMin,
-          status: 'ACTIVE',
-        },
+    try {
+      const session = await this.prisma.$transaction(async (tx) => {
+        const newSession = await tx.session.create({
+          data: {
+            resourceId,
+            userId,
+            durationMin,
+            status: 'ACTIVE',
+          },
+        });
+
+        await tx.resource.update({
+          where: { id: resourceId },
+          data: { status: 'OCCUPIED' },
+        });
+
+        await tx.invoice.create({
+          data: {
+            sessionId: newSession.id,
+            timeAmount: initialPrice,
+            itemsAmount: 0,
+            totalAmount: initialPrice,
+            isPaid: durationMin > 0,
+            paymentDate: durationMin > 0 ? new Date() : null,
+            items: []
+          },
+        });
+
+        return newSession;
       });
 
-      await tx.resource.update({
-        where: { id: resourceId },
-        data: { status: 'OCCUPIED' },
-      });
+      await this.logsService.createLog(userId, 'START_SESSION', `بدء جلسة لـ ${resource.name}. المبلغ: ${initialPrice}`);
 
-      await tx.invoice.create({
-        data: {
-          sessionId: newSession.id,
-          timeAmount: initialPrice,
-          itemsAmount: 0,
-          totalAmount: initialPrice,
-          isPaid: durationMin > 0,
-          paymentDate: durationMin > 0 ? new Date() : null,
-          items: []
-        },
-      });
+      if (durationMin > 0) {
+        setTimeout(() => {
+          this.stopSession(session.id, 'SYSTEM');
+        }, durationMin * 60 * 1000);
+      }
 
-      return newSession;
-    });
-
-    await this.logsService.createLog(userId, 'START_SESSION', `بدء جلسة لـ ${resource.name}. المبلغ المدفوع: ${initialPrice}`);
-
-    if (durationMin > 0) {
-      setTimeout(() => {
-        this.stopSession(session.id, 'SYSTEM');
-      }, durationMin * 60 * 1000);
+      this.eventEmitter.emit('session.updated', session);
+      return session;
+    } catch (error) {
+      console.error('Prisma Error:', error);
+      throw new InternalServerErrorException('فشل في حفظ الجلسة في قاعدة البيانات. تأكد من استقرار اتصال Supabase.');
     }
-
-    this.eventEmitter.emit('session.updated', session);
-    return session;
   }
 
   async stopSession(sessionId: string, userId?: string) {
@@ -89,11 +100,17 @@ export class SessionsService {
       const now = new Date();
       const diffMs = now.getTime() - session.startTime.getTime();
       const diffMin = Math.ceil(diffMs / (60 * 1000));
+      // سعر افتراضي 0.5 ريال للدقيقة في حال عدم وجود تسعيرة
       finalTimeAmount = diffMin * 0.5;
     }
 
+    // محاولة إطفاء الجهاز
     if (session.resource.tuyaDeviceId) {
-      await this.tuyaService.controlDevice(session.resource.tuyaDeviceId, false);
+      try {
+        await this.tuyaService.controlDevice(session.resource.tuyaDeviceId, false);
+      } catch (e) {
+        console.error('Tuya Stop Error:', e.message);
+      }
     }
 
     const finalTotal = finalTimeAmount + session.invoice.itemsAmount;

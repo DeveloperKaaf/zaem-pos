@@ -1,9 +1,10 @@
 import { Controller, Get, Post, Body, Param, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { InvoicesService } from './invoices.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 
 @Controller('invoices')
-@UseGuards(JwtAuthGuard)
+@UseGuards(RolesGuard) // استخدام الحارس الموحد الجديد
 export class InvoicesController {
   constructor(private readonly invoicesService: InvoicesService) {}
 
@@ -13,6 +14,7 @@ export class InvoicesController {
   }
 
   @Post(':id/pay')
+  @Roles('ADMIN') // التأكد أن المدير فقط من يحصل المبالغ
   pay(@Param('id', ParseIntPipe) id: number) {
     return this.invoicesService.markAsPaid(id);
   }

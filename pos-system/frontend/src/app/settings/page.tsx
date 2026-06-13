@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
   DialogFooter
 } from "@/components/ui/dialog";
@@ -216,6 +217,9 @@ export default function SettingsPage() {
             <DialogContent dir="rtl">
               <DialogHeader>
                 <DialogTitle className="text-xl font-bold">إضافة جهاز أو طاولة جديدة</DialogTitle>
+                <DialogDescription className="text-slate-500">
+                  قم بإدخال بيانات الجهاز الجديد لتتمكن من بدء الجلسات عليه.
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
