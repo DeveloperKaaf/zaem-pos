@@ -36,6 +36,7 @@ function ActiveSessionRow({ session }: { session: any }) {
         const m = Math.floor((diff % 3600000) / 60000);
         const s = Math.floor((diff % 60000) / 1000);
         setDisplayTime(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+        // افتراض سعر الساعة 30 ريال (0.5 ريال للدقيقة)
         setLiveAmount(diffMin * 0.5);
       }
     }, 1000);
@@ -43,8 +44,8 @@ function ActiveSessionRow({ session }: { session: any }) {
   }, [session]);
 
   return (
-    <TableRow className="hover:bg-slate-50 transition-all">
-      <TableCell className="font-black text-xl text-slate-800">{session.resourceName}</TableCell>
+    <TableRow className="hover:bg-slate-50 transition-all border-b">
+      <TableCell className="font-black text-xl text-slate-800 py-4">{session.resourceName}</TableCell>
       <TableCell className="text-slate-400 font-bold">
         {new Date(session.startTime).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
       </TableCell>
@@ -52,7 +53,7 @@ function ActiveSessionRow({ session }: { session: any }) {
         {session.durationMin === 0 ? (
           <div className="flex flex-col">
             <span className="text-emerald-600 font-black text-lg">{liveAmount.toFixed(2)} ريال</span>
-            <span className="text-[10px] text-slate-400 font-bold">حساب لحظي (0.5 ر/د)</span>
+            <span className="text-[10px] text-slate-400 font-bold tracking-tighter italic">حساب لحظي متراكم</span>
           </div>
         ) : (
           <Badge className="bg-blue-50 text-blue-700 border-blue-100 px-3 font-bold">مدفوع مسبقاً</Badge>
@@ -93,12 +94,12 @@ export default function InvoicesPage() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const resData = await resRes.json();
-      const active = resData.flatMap((r: any) =>
-        r.sessions.filter((s: any) => s.status === 'ACTIVE').map((s: any) => ({...s, resourceName: r.name}))
+      const active = (Array.isArray(resData) ? resData : []).flatMap((r: any) =>
+        (r.sessions || []).filter((s: any) => s.status === 'ACTIVE').map((s: any) => ({...s, resourceName: r.name}))
       );
       setActiveSessions(active);
     } catch (err) {
-      console.error(err);
+      console.error("Data Fetch Error:", err);
     } finally {
       setLoading(false);
     }
@@ -112,13 +113,27 @@ export default function InvoicesPage() {
 
   const handlePay = async (id: number) => {
     const token = localStorage.getItem('token');
+    if (!token) { alert('انتهت صلاحية الجلسة'); router.push('/login'); return; }
+
     try {
-      await fetch(`${API_BASE_URL}/invoices/${id}/pay`, {
+      const res = await fetch(`${API_BASE_URL}/invoices/${id}/pay`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
       });
-      fetchData();
-    } catch (e) { console.error(e); }
+
+      if (res.ok) {
+        alert('✅ تم تحصيل المبلغ وإغلاق الفاتورة بنجاح');
+        fetchData(); // تحديث القائمة فوراً
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(`❌ فشل التحصيل: ${data.message || 'خطأ غير معروف في السيرفر'}`);
+      }
+    } catch (e) {
+      alert('⚠️ خطأ في الاتصال بالسيرفر، تأكد من أنك أونلاين');
+    }
   };
 
   const printInvoice = (inv: any) => {
@@ -130,28 +145,29 @@ export default function InvoicesPage() {
         <head>
           <title>فاتورة - ${inv.session.resource.name}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
-            .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-            .details { text-align: right; margin-bottom: 30px; }
-            .total { font-size: 24px; font-weight: bold; border-top: 2px solid #000; padding-top: 10px; }
-            .footer { margin-top: 50px; font-size: 12px; color: #666; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; text-align: center; color: #333; }
+            .header { border-bottom: 3px double #000; padding-bottom: 10px; margin-bottom: 20px; }
+            .details { text-align: right; margin-bottom: 30px; font-size: 14px; }
+            .total { font-size: 28px; font-weight: 900; border-top: 2px solid #000; padding-top: 15px; margin-top: 20px; color: #059669; }
+            .footer { margin-top: 50px; font-size: 12px; color: #999; border-top: 1px dashed #ccc; padding-top: 10px; }
           </style>
         </head>
-        <body onload="window.print(); window.close();">
+        <body onload="window.print();">
           <div class="header">
-            <h1>مركز الزعيم للترفيه</h1>
-            <p>رقم الفاتورة: #${inv.id}</p>
+            <h1 style="margin:0">مركز الزعيم POS</h1>
+            <p style="margin:5px 0">فاتورة ضريبية مبسطة</p>
           </div>
           <div class="details">
-            <p>الجهاز: <strong>${inv.session.resource.name}</strong></p>
+            <p>رقم الفاتورة: <strong>#INV-${inv.id}</strong></p>
+            <p>الجهاز/الطاولة: <strong>${inv.session.resource.name}</strong></p>
             <p>التاريخ: ${new Date(inv.createdAt).toLocaleString('ar-SA')}</p>
-            <p>طريقة الوقت: ${inv.session.durationMin > 0 ? inv.session.durationMin + ' دقيقة' : 'وقت مفتوح'}</p>
+            <p>الموظف المسؤول: ${inv.session.user?.name || 'مدير النظام'}</p>
           </div>
           <div class="total">
-            المبلغ الإجمالي: ${inv.totalAmount.toFixed(2)} ريال
+             الإجمالي: ${inv.totalAmount.toFixed(2)} ريال
           </div>
           <div class="footer">
-            شكراً لزيارتكم! نتمنى لكم يوماً سعيداً.
+            شكراً لثقتكم بنا! <br> المبالغ المدفوعة غير مستردة.
           </div>
         </body>
       </html>
@@ -163,88 +179,88 @@ export default function InvoicesPage() {
     <div className="p-6 space-y-8 bg-slate-50 min-h-screen" dir="rtl">
       <div className="flex justify-between items-end border-b pb-6 border-slate-200">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tighter">الرقابة والمتابعة</h1>
-          <p className="text-slate-500 font-bold mt-1 uppercase text-xs tracking-widest italic">Zaem Entertainment POS v1.0</p>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">الرقابة والتحصيل</h1>
+          <p className="text-slate-500 font-bold mt-1 text-xs tracking-widest">إدارة العمليات المالية والزمنية</p>
         </div>
-        <Button onClick={fetchData} className="bg-white text-slate-700 hover:bg-slate-100 border-2 border-slate-200 font-bold px-6 shadow-sm h-12">
-          <RefreshCw className={`ml-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> تحديث
+        <Button onClick={fetchData} variant="outline" className="h-12 px-6 font-bold shadow-sm bg-white">
+          <RefreshCw className={`ml-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> تحديث البيانات
         </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-8">
-        <Card className="shadow-xl border-none overflow-hidden">
-          <CardHeader className="bg-white border-b p-6">
+        <Card className="shadow-xl border-none overflow-hidden bg-white">
+          <CardHeader className="border-b p-6 bg-slate-50">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-3 text-2xl font-black text-slate-800">
-                <Timer className="h-8 w-8 text-blue-600" /> متابعة الجلسات الحالية
+                <Timer className="h-8 w-8 text-blue-600" /> الجلسات النشطة حالياً
               </CardTitle>
-              <Badge className="bg-blue-600 text-white px-4 py-1 text-sm font-black">{activeSessions.length} نشط</Badge>
+              <Badge className="bg-blue-600 text-white px-4 py-1 text-sm font-black animate-pulse">{activeSessions.length} أجهزة تعمل</Badge>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
-              <TableHeader className="bg-slate-50 text-right">
-                <TableRow>
-                  <TableHead className="font-black text-slate-500 text-right">الجهاز / الطاولة</TableHead>
+              <TableHeader>
+                <TableRow className="bg-slate-50/50">
+                  <TableHead className="font-black text-slate-500 text-right">الجهاز</TableHead>
                   <TableHead className="font-black text-slate-500 text-right">وقت البدء</TableHead>
-                  <TableHead className="font-black text-slate-500 text-right">الحساب المالي</TableHead>
-                  <TableHead className="font-black text-slate-500 text-left">العداد الحي</TableHead>
+                  <TableHead className="font-black text-slate-500 text-right">الحساب</TableHead>
+                  <TableHead className="font-black text-slate-500 text-left px-6">العداد</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {activeSessions.length > 0 ? activeSessions.map((s: any) => (
                   <ActiveSessionRow key={s.id} session={s} />
                 )) : (
-                  <TableRow><TableCell colSpan={4} className="text-center py-20 text-slate-300 italic">لا يوجد عملاء حالياً</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={4} className="text-center py-20 text-slate-400 font-bold italic">لا توجد جلسات مفتوحة حالياً</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
 
-        <Card className="shadow-xl border-none overflow-hidden">
-          <CardHeader className="bg-emerald-600 text-white p-6">
+        <Card className="shadow-2xl border-none overflow-hidden bg-white border-t-8 border-t-emerald-500">
+          <CardHeader className="bg-emerald-50 p-6 border-b border-emerald-100">
             <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-3 text-2xl font-black">
-                <Wallet className="h-8 w-8 text-emerald-200" /> تحصيل مبالغ المغادرة
+              <CardTitle className="flex items-center gap-3 text-2xl font-black text-emerald-900">
+                <Wallet className="h-8 w-8 text-emerald-600" /> فواتير بانتظار التحصيل
               </CardTitle>
-              <Badge className="bg-emerald-800 text-white font-black">{pendingInvoices.length} فواتير</Badge>
+              <Badge className="bg-emerald-600 text-white font-black px-4">{pendingInvoices.length} عملاء غادروا</Badge>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
-              <TableHeader className="bg-slate-50">
+              <TableHeader className="bg-slate-50/50">
                 <TableRow>
                   <TableHead className="font-black text-right">رقم الفاتورة</TableHead>
                   <TableHead className="font-black text-right">الجهاز</TableHead>
-                  <TableHead className="font-black text-center text-lg">المبلغ النهائي</TableHead>
-                  <TableHead className="font-black text-left">إجراءات</TableHead>
+                  <TableHead className="font-black text-center text-lg">المبلغ المطلوب</TableHead>
+                  <TableHead className="font-black text-left px-6">الإجراء المالي</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pendingInvoices.length > 0 ? pendingInvoices.map((inv: any) => (
-                  <TableRow key={inv.id} className="hover:bg-emerald-50/50 border-b border-slate-100">
-                    <TableCell className="font-mono font-bold text-slate-400">#{inv.id}</TableCell>
+                  <TableRow key={inv.id} className="hover:bg-emerald-50/30 transition-colors border-b">
+                    <TableCell className="font-mono font-bold text-slate-400 text-sm">#INV-{inv.id}</TableCell>
                     <TableCell className="font-black text-xl text-slate-700 text-right">{inv.session.resource.name}</TableCell>
                     <TableCell className="text-center">
-                      <span className="text-3xl font-black text-emerald-600 bg-white px-6 py-2 rounded-2xl border-2 border-emerald-100 shadow-sm inline-block">
-                        {inv.totalAmount.toFixed(2)} ريال
+                      <span className="text-3xl font-black text-emerald-700 bg-emerald-50 px-6 py-2 rounded-2xl border-2 border-emerald-200 inline-block shadow-sm">
+                        {inv.totalAmount.toFixed(2)} <span className="text-sm">ريال</span>
                       </span>
                     </TableCell>
-                    <TableCell className="text-left space-x-3 space-x-reverse flex justify-end p-4">
-                      <Button variant="outline" className="h-12 w-12 border-slate-200" onClick={() => printInvoice(inv)}>
-                        <Printer className="h-5 w-5 text-slate-500" />
+                    <TableCell className="text-left space-x-3 space-x-reverse flex justify-end p-6">
+                      <Button variant="outline" className="h-14 w-14 border-slate-200 hover:bg-slate-50 shadow-sm" onClick={() => printInvoice(inv)}>
+                        <Printer className="h-6 w-6 text-slate-500" />
                       </Button>
                       <Button
-                        className="bg-emerald-600 hover:bg-emerald-700 h-12 px-8 font-black text-lg shadow-lg"
+                        className="bg-emerald-600 hover:bg-emerald-700 h-14 px-10 font-black text-xl shadow-lg hover:translate-y-[-2px] transition-all"
                         onClick={() => handlePay(inv.id)}
                       >
-                        تحصيل وإغلاق
+                        تم استلام المبلغ
                       </Button>
                     </TableCell>
                   </TableRow>
                 )) : (
-                  <TableRow><TableCell colSpan={4} className="text-center py-20 text-slate-300 italic">لا يوجد مبالغ بانتظار التحصيل</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={4} className="text-center py-20 text-slate-300 italic font-bold">كل الفواتير محصلة ✅</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
