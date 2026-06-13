@@ -13,10 +13,10 @@ import {
   DialogDescription,
   DialogFooter
 } from "@/components/ui/dialog";
-import { CheckCircle, Printer, RefreshCw, Clock, Timer, Wallet, PlusCircle, Square, AlertCircle } from "lucide-react";
+import { CheckCircle, Printer, RefreshCw, Clock, Timer, Wallet, PlusCircle, Square, CreditCard } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
-import { io } from "socket.io-client"; // إضافة مكتبة السوكيت
+import { io } from "socket.io-client";
 
 // --- مكون العداد الحي ---
 function ActiveSessionRow({ session, onExtend, onStop }: { session: any, onExtend: (s: any) => void, onStop: (s: any) => void }) {
@@ -91,7 +91,10 @@ export default function InvoicesPage() {
   const [activeSessions, setActiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showExtend, setShowExtend] = useState(false);
+  const [showExtendPayment, setShowExtendPayment] = useState(false);
   const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [selectedExtendPrice, setSelectedExtendPrice] = useState<any>(null);
+
   const router = useRouter();
 
   const fetchData = useCallback(async () => {
@@ -123,20 +126,9 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     fetchData();
-
-    // إعداد السوكيت بالبنية المستقرة لـ Render
-    const socket = io(API_BASE_URL, {
-      transports: ['websocket'],
-      upgrade: false
-    });
-
-    socket.on('sessionUpdate', () => {
-      fetchData(); // تحديث البيانات فوراً عند حدوث أي تغيير
-    });
-
-    return () => {
-      socket.disconnect();
-    };
+    const socket = io(API_BASE_URL, { transports: ['websocket'], upgrade: false });
+    socket.on('sessionUpdate', () => fetchData());
+    return () => { socket.disconnect(); };
   }, [fetchData]);
 
   const handlePay = async (id: number) => {
@@ -159,14 +151,11 @@ export default function InvoicesPage() {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.ok) {
-        alert("✅ تم إيقاف الجلسة بنجاح");
-        fetchData();
-      }
+      if (res.ok) fetchData();
     } catch (e) { alert("خطأ في الاتصال"); }
   };
 
-  const handleExtendConfirm = async (extraMin: number) => {
+  const handleFinalExtend = async () => {
     const token = localStorage.getItem('token');
     try {
       const res = await fetch(`${API_BASE_URL}/sessions/extend`, {
@@ -175,12 +164,15 @@ export default function InvoicesPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ sessionId: selectedSession.id, extraMin })
+        body: JSON.stringify({
+          sessionId: selectedSession.id,
+          extraMin: selectedExtendPrice.durationMin
+        })
       });
       if (res.ok) {
+        setShowExtendPayment(false);
         setShowExtend(false);
         fetchData();
-        alert("✅ تم تمديد الوقت بنجاح");
       }
     } catch (e) { alert("خطأ في التمديد"); }
   };
@@ -289,6 +281,7 @@ export default function InvoicesPage() {
         </Card>
       </div>
 
+      {/* حوار اختيار مدة التمديد */}
       <Dialog open={showExtend} onOpenChange={setShowExtend}>
         <DialogContent dir="rtl">
           <DialogHeader>
@@ -297,13 +290,35 @@ export default function InvoicesPage() {
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-6">
             {selectedSession?.prices?.filter((p:any) => p.durationMin > 0).map((p: any) => (
-              <Button key={p.id} variant="outline" className="h-16 text-xl font-black hover:border-blue-500 hover:bg-blue-50" onClick={() => handleExtendConfirm(p.durationMin)}>
+              <Button key={p.id} variant="outline" className="h-16 text-xl font-black hover:border-blue-500 hover:bg-blue-50" onClick={() => { setSelectedExtendPrice(p); setShowExtendPayment(true); }}>
                 +{p.durationMin} دقيقة
               </Button>
             ))}
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowExtend(false)} className="w-full h-12 font-bold">إلغاء</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* حوار تأكيد الدفع للتمديد */}
+      <Dialog open={showExtendPayment} onOpenChange={setShowExtendPayment}>
+        <DialogContent dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد استلام مبلغ التمديد</DialogTitle>
+            <DialogDescription>سيتم إضافة {selectedExtendPrice?.durationMin} دقيقة لـ {selectedSession?.resourceName}.</DialogDescription>
+          </DialogHeader>
+          <div className="py-10 text-center">
+            <p className="text-slate-500 font-bold">مبلغ التمديد المطلوب:</p>
+            <div className="text-7xl font-black text-slate-900 mt-2">
+              {selectedExtendPrice?.price} <span className="text-2xl">ريال</span>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setShowExtendPayment(false)} className="flex-1 h-14">إلغاء</Button>
+            <Button onClick={handleFinalExtend} className="flex-1 h-14 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg">
+              <CreditCard className="ml-2 h-6 w-6" /> تأكيد الاستلام
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

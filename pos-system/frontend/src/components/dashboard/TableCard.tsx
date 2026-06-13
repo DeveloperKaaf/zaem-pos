@@ -13,17 +13,19 @@ import {
   DialogFooter,
   DialogDescription
 } from "@/components/ui/dialog";
-import { Timer, Play, Square, Receipt, CreditCard, Gamepad2, Utensils, PlusCircle } from "lucide-react";
+import { Timer, Play, Square, Receipt, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 
 export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () => void }) {
   const [loading, setLoading] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
+  const [showExtendPayment, setShowExtendPayment] = useState(false);
   const [showAddOrder, setShowAddOrder] = useState(false);
   const [showExtend, setShowExtend] = useState(false);
   const [products, setProducts] = useState([]);
   const [selectedPrice, setSelectedPrice] = useState<any>(null);
+  const [selectedExtendPrice, setSelectedExtendPrice] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState<string>("00:00:00");
   const [currentTimeAmount, setCurrentTimeAmount] = useState<number>(0);
 
@@ -31,6 +33,15 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
 
   const activeSession = resource.sessions?.find((s: any) => s.status === 'ACTIVE');
   const activeInvoice = activeSession?.invoice;
+
+  // دالة لاختيار الأيقونة المناسبة للصنف
+  const getResourceIcon = () => {
+    const type = (resource.type || "").toLowerCase();
+    if (type.includes('بلاي ستيشن')) return <Gamepad2 className="h-20 w-20" />;
+    if (type.includes('بلياردو')) return <Target className="h-20 w-20" />;
+    if (type.includes('تنس طاولة')) return <Trophy className="h-20 w-20" />;
+    return <Laptop className="h-20 w-20" />;
+  };
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -40,7 +51,6 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         const now = Date.now();
 
         if (activeSession.durationMin > 0) {
-          // عداد تنازلي للمحدد
           const end = start + activeSession.durationMin * 60 * 1000;
           const diff = end - now;
           if (diff <= 0) {
@@ -54,14 +64,12 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             setCurrentTimeAmount(activeInvoice?.timeAmount || 0);
           }
         } else {
-          // عداد تصاعدي للمفتوح
           const diff = now - start;
           const diffMin = Math.ceil(diff / 60000);
           const h = Math.floor(diff / 3600000);
           const m = Math.floor((diff % 3600000) / 60000);
           const s = Math.floor((diff % 60000) / 1000);
           setTimeLeft(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
-          // حساب السعر (0.5 ريال للدقيقة كمثال)
           setCurrentTimeAmount(diffMin * 0.5);
         }
       }, 1000);
@@ -109,14 +117,13 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
       if (res.ok) {
         setShowPayment(false);
         onUpdate();
-        // توجيه تلقائي لصفحة العمليات
         router.push('/invoices');
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  const handleExtendSession = async (extraMin: number) => {
+  const handleExtendSession = async () => {
     const token = localStorage.getItem('token');
     setLoading(true);
     try {
@@ -126,9 +133,13 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ sessionId: activeSession.id, extraMin })
+        body: JSON.stringify({
+          sessionId: activeSession.id,
+          extraMin: selectedExtendPrice.durationMin
+        })
       });
       if (res.ok) {
+        setShowExtendPayment(false);
         setShowExtend(false);
         onUpdate();
       }
@@ -175,9 +186,11 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2 text-slate-200">
-            <Gamepad2 className="h-20 w-20" />
-            <p className="text-sm font-bold">جاهز لاستقبال عميل</p>
+          <div className="flex flex-col items-center gap-2 text-slate-300">
+            {getResourceIcon()}
+            <p className="text-2xl font-black text-slate-400 mt-2 uppercase tracking-wide">
+              {resource.type}
+            </p>
           </div>
         )}
       </CardContent>
@@ -221,6 +234,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         )}
       </CardFooter>
 
+      {/* حوار تأكيد الدفع لبدء الجلسة */}
       <Dialog open={showPayment} onOpenChange={setShowPayment}>
         <DialogContent dir="rtl">
           <DialogHeader>
@@ -242,6 +256,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         </DialogContent>
       </Dialog>
 
+      {/* حوار اختيار مدة التمديد */}
       <Dialog open={showExtend} onOpenChange={setShowExtend}>
         <DialogContent dir="rtl">
           <DialogHeader>
@@ -250,11 +265,33 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-6">
             {resource.prices?.filter((p:any) => p.durationMin > 0).map((p: any) => (
-              <Button key={p.id} variant="outline" className="h-16 font-bold" onClick={() => handleExtendSession(p.durationMin)}>
+              <Button key={p.id} variant="outline" className="h-16 font-bold" onClick={() => { setSelectedExtendPrice(p); setShowExtendPayment(true); }}>
                 +{p.durationMin} دقيقة
               </Button>
             ))}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* حوار تأكيد الدفع للتمديد */}
+      <Dialog open={showExtendPayment} onOpenChange={setShowExtendPayment}>
+        <DialogContent dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد استلام مبلغ التمديد</DialogTitle>
+            <DialogDescription>سيتم إضافة {selectedExtendPrice?.durationMin} دقيقة للجلسة.</DialogDescription>
+          </DialogHeader>
+          <div className="py-10 text-center">
+            <p className="text-slate-500 font-bold">مبلغ التمديد المطلوب:</p>
+            <div className="text-7xl font-black text-slate-900 mt-2">
+              {selectedExtendPrice?.price} <span className="text-2xl">ريال</span>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setShowExtendPayment(false)} className="flex-1 h-14">إلغاء</Button>
+            <Button onClick={handleExtendSession} className="flex-1 h-14 text-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg" disabled={loading}>
+              <CreditCard className="ml-2 h-6 w-6" /> تأكيد الاستلام
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
