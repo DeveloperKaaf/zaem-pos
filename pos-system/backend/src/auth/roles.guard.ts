@@ -12,24 +12,26 @@ export class RolesGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    // إذا لم تكن هناك أدوار مطلوبة، اسمح بالمرور
     if (!requiredRoles) {
       return true;
     }
 
     const request = context.switchToHttp().getRequest();
+    // التحقق من وجود المستخدم في الطلب (الذي وضعه JwtAuthGuard)
     const user = request.user;
 
-    // تأمين الكود: إذا لم يكن المستخدم موجوداً في الطلب
     if (!user) {
-      throw new UnauthorizedException('يجب تسجيل الدخول أولاً للقيام بهذا الإجراء');
+      console.error('RolesGuard: No user found in request');
+      throw new UnauthorizedException('يجب تسجيل الدخول أولاً للقيام بهذا الإجراء (لم يتم العثور على بيانات المستخدم)');
     }
 
-    // التأكد من وجود رتبة للمستخدم
-    if (!user.role) {
-      return false;
+    const userRole = (user.role || '').toUpperCase();
+    const hasRole = requiredRoles.some((role) => userRole === role.toUpperCase());
+
+    if (!hasRole) {
+      console.warn(`RolesGuard: User ${user.username} with role ${userRole} tried to access forbidden route`);
     }
 
-    return requiredRoles.some((role) => user.role.toUpperCase() === role.toUpperCase());
+    return hasRole;
   }
 }
