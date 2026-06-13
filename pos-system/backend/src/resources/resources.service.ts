@@ -58,22 +58,57 @@ export class ResourcesService {
   }
 
   async delete(id: string) {
+    // 1. جلب الجهاز مع كافة الارتباطات
     const resource = await this.prisma.resource.findUnique({
       where: { id },
-      include: { sessions: { where: { status: 'ACTIVE' } } }
+      include: {
+        sessions: {
+          include: { invoice: true }
+        },
+        prices: true
+      }
     });
 
-    if (!resource) throw new NotFoundException('الجهاز غير موجود');
-    if (resource.sessions.length > 0) {
-      throw new BadRequestException('لا يمكن حذف الجهاز لوجود جلسة نشطة حالياً.');
+    if (!resource) throw new NotFoundException('الجهاز غير موجود بالفعل');
+
+    // 2. منع الحذف إذا كانت هناك جلسة مفتوحة حالياً
+    const hasActiveSession = resource.sessions.some(s => s.status === 'ACTIVE');
+    if (hasActiveSession) {
+      throw new BadRequestException('لا يمكن حذف الجهاز لوجود جلسة نشطة حالياً. يرجى إغلاق الجلسة أولاً.');
     }
 
     try {
-      // بفضل خاصية Cascade في الـ Schema، سيتم حذف كل شيء مرتبط تلقائياً
-      return await this.prisma.resource.delete({ where: { id } });
+      // 3. الحذف اليدوي المتسلسل (Manual Cascade) لضمان النجاح في Supabase
+      return await this.prisma.$transaction(async (tx) => {
+        const sessionIds = resource.sessions.map(s => s.id);
+
+        // أ. حذف الفواتير المرتبطة بكل الجلسات (سواء مدفوعة أو لا)
+        if (sessionIds.length > 0) {
+          await tx.invoice.deleteMany({
+            where: { sessionId: { in: sessionIds } }
+          });
+        }
+
+        // ب. حذف كافة الجلسات المرتبطة بالجهاز
+        await tx.session.deleteMany({
+          where: { resourceId: id }
+        });
+
+        // ج. حذف إعدادات الأسعار الخاصة بالجهاز
+        await tx.priceConfig.deleteMany({
+          where: { resourceId: id }
+        });
+
+        // د. الحذف النهائي للجهاز
+        return await tx.resource.delete({
+          where: { id }
+        });
+      }, {
+        timeout: 10000 // زيادة مهلة العملية لضمان التنفيذ في السيرفر السحابي
+      });
     } catch (error) {
-      console.error(error);
-      throw new InternalServerErrorException('حدث خطأ أثناء الحذف من قاعدة البيانات');
+      console.error('DETAILED DELETE ERROR:', error);
+      throw new InternalServerErrorException('فشل الحذف بسبب قيود حماية البيانات. تأكد من تحديث قاعدة البيانات عبر Prisma DB Push.');
     }
   }
 
