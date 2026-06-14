@@ -93,6 +93,8 @@ model Invoice {
   session       Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   timeAmount    Float    @default(0)
   itemsAmount   Float    @default(0)
+  discount      Float    @default(0)
+  discountType  String?  @default("FIXED")
   totalAmount   Float    @default(0)
   tax           Float    @default(0)
   isPaid        Boolean  @default(false)

@@ -25,7 +25,14 @@ export class SessionsService {
     }
   }
 
-  async startSession(resourceId: string, durationMin: number, userId: string, paymentMethod?: string, splitData?: { cash: number, net: number }) {
+  async startSession(
+    resourceId: string,
+    durationMin: number,
+    userId: string,
+    paymentMethod?: string,
+    splitData?: { cash: number, net: number },
+    discountData?: { amount: number, type: 'FIXED' | 'PERCENT' }
+  ) {
     const resource = await this.prisma.resource.findUnique({
       where: { id: resourceId },
       include: { prices: true },
@@ -40,6 +47,17 @@ export class SessionsService {
       if (!priceConfig) throw new BadRequestException('إعدادات السعر لهذا الوقت غير موجودة');
       initialPrice = priceConfig.price;
     }
+
+    // حساب الخصم
+    let discountValue = 0;
+    if (discountData && discountData.amount > 0) {
+      if (discountData.type === 'PERCENT') {
+        discountValue = initialPrice * (discountData.amount / 100);
+      } else {
+        discountValue = discountData.amount;
+      }
+    }
+    const finalTotal = Math.max(0, initialPrice - discountValue);
 
     if (resource.tuyaDeviceId) {
       try {
@@ -69,7 +87,9 @@ export class SessionsService {
           sessionId: newSession.id,
           timeAmount: initialPrice,
           itemsAmount: 0,
-          totalAmount: initialPrice,
+          discount: discountData?.amount || 0,
+          discountType: discountData?.type || 'FIXED',
+          totalAmount: finalTotal,
           isPaid: durationMin > 0,
           paymentDate: durationMin > 0 ? new Date() : null,
           paymentMethod: durationMin > 0 ? (paymentMethod || 'CASH') : null,
@@ -81,9 +101,9 @@ export class SessionsService {
               invoiceData.cashAmount = splitData.cash;
               invoiceData.netAmount = splitData.net;
            } else if (paymentMethod === 'CASH') {
-              invoiceData.cashAmount = initialPrice;
+              invoiceData.cashAmount = finalTotal;
            } else if (paymentMethod === 'NET') {
-              invoiceData.netAmount = initialPrice;
+              invoiceData.netAmount = finalTotal;
            }
         }
 
@@ -103,6 +123,8 @@ export class SessionsService {
       });
 
       let logMsg = `بدء جلسة لـ ${resource.name}. المبلغ: ${initialPrice}`;
+      if (discountValue > 0) logMsg += ` (خصم: ${discountValue})`;
+
       if (paymentMethod === 'SPLIT' && splitData) {
           logMsg += ` (تقسيم: كاش ${splitData.cash} - شبكة ${splitData.net})`;
       } else {
@@ -124,7 +146,7 @@ export class SessionsService {
       }
       if (durationMin > 0) {
         timeouts.stop = setTimeout(() => {
-          this.stopSession(result.session.id, 'SYSTEM');
+          this.stopSession(result.session.id, undefined, 'SYSTEM'); // لا نمرر userId عند الإغلاق التلقائي
         }, durationMin * 60 * 1000);
       }
       if (timeouts.warning || timeouts.stop) {
@@ -139,7 +161,14 @@ export class SessionsService {
     }
   }
 
-  async extendSession(sessionId: string, extraMin: number, userId: string, paymentMethod?: string, splitData?: { cash: number, net: number }) {
+  async extendSession(
+    sessionId: string,
+    extraMin: number,
+    userId: string,
+    paymentMethod?: string,
+    splitData?: { cash: number, net: number },
+    discountData?: { amount: number, type: 'FIXED' | 'PERCENT' }
+  ) {
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
       include: { resource: { include: { prices: true } }, invoice: true }
@@ -152,16 +181,28 @@ export class SessionsService {
     const priceConfig = session.resource.prices.find(p => p.durationMin === extraMin);
     const extraPrice = priceConfig?.price || 0;
 
+    // حساب الخصم للإضافة الجديدة (تمديد)
+    let discountValue = 0;
+    if (discountData && discountData.amount > 0) {
+      if (discountData.type === 'PERCENT') {
+        discountValue = extraPrice * (discountData.amount / 100);
+      } else {
+        discountValue = discountData.amount;
+      }
+    }
+    const finalExtra = Math.max(0, extraPrice - discountValue);
+
     const updatedInvoice = await this.prisma.$transaction(async (tx) => {
       const newDuration = session.durationMin + extraMin;
-      const sess = await tx.session.update({
+      await tx.session.update({
         where: { id: sessionId },
         data: { durationMin: newDuration }
       });
 
       const invoiceUpdate: any = {
         timeAmount: { increment: extraPrice },
-        totalAmount: { increment: extraPrice },
+        discount: { increment: discountData?.amount || 0 },
+        totalAmount: { increment: finalExtra },
         paymentMethod: paymentMethod || session.invoice.paymentMethod || 'CASH'
       };
 
@@ -169,9 +210,9 @@ export class SessionsService {
           invoiceUpdate.cashAmount = { increment: splitData.cash };
           invoiceUpdate.netAmount = { increment: splitData.net };
       } else if (paymentMethod === 'CASH') {
-          invoiceUpdate.cashAmount = { increment: extraPrice };
+          invoiceUpdate.cashAmount = { increment: finalExtra };
       } else if (paymentMethod === 'NET') {
-          invoiceUpdate.netAmount = { increment: extraPrice };
+          invoiceUpdate.netAmount = { increment: finalExtra };
       }
 
       return tx.invoice.update({
@@ -193,7 +234,7 @@ export class SessionsService {
 
     if (remainingMs > 0) {
       const timeouts: { warning?: NodeJS.Timeout, stop?: NodeJS.Timeout } = {};
-      timeouts.stop = setTimeout(() => { this.stopSession(sessionId, 'SYSTEM'); }, remainingMs);
+      timeouts.stop = setTimeout(() => { this.stopSession(sessionId, undefined, 'SYSTEM'); }, remainingMs);
       const warningRemainingMs = remainingMs - (5 * 60 * 1000);
       if (warningRemainingMs > 0) {
         timeouts.warning = setTimeout(async () => {
@@ -207,19 +248,20 @@ export class SessionsService {
       this.sessionTimeouts.set(sessionId, timeouts);
     }
 
-    let logMsg = `تمديد جلسة لـ ${session.resource.name} بمقدار ${extraMin} دقيقة. المبلغ: ${extraPrice}`;
-    if (paymentMethod === 'SPLIT' && splitData) {
-        logMsg += ` (تقسيم: كاش ${splitData.cash} - شبكة ${splitData.net})`;
-    } else {
-        logMsg += ` (${paymentMethod === 'NET' ? 'شبكة' : 'كاش'})`;
-    }
+    let logMsg = `تمديد جلسة لـ ${session.resource.name} بمقدار ${extraMin} دقيقة.`;
     await this.logsService.createLog(userId, 'EXTEND_SESSION', logMsg);
 
     this.eventEmitter.emit('session.updated', { id: sessionId });
     return updatedInvoice;
   }
 
-  async stopSession(sessionId: string, userId?: string, paymentMethod: string = 'CASH', splitData?: { cash: number, net: number }) {
+  async stopSession(
+    sessionId: string,
+    userId?: string,
+    paymentMethod: string = 'CASH',
+    splitData?: { cash: number, net: number },
+    discountData?: { amount: number, type: 'FIXED' | 'PERCENT' }
+  ) {
     this.clearSessionTimeouts(sessionId);
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
@@ -244,7 +286,16 @@ export class SessionsService {
       }
     }
 
-    const finalTotal = finalTimeAmount + session.invoice.itemsAmount;
+    const subtotal = finalTimeAmount + session.invoice.itemsAmount;
+    let discountValue = 0;
+    if (discountData && discountData.amount > 0) {
+      if (discountData.type === 'PERCENT') {
+        discountValue = subtotal * (discountData.amount / 100);
+      } else {
+        discountValue = discountData.amount;
+      }
+    }
+    const finalTotal = Math.max(0, subtotal - discountValue);
 
     const resultInvoice = await this.prisma.$transaction(async (tx) => {
       await tx.session.update({
@@ -259,6 +310,8 @@ export class SessionsService {
 
       const invoiceUpdate: any = {
         timeAmount: finalTimeAmount,
+        discount: discountData?.amount || 0,
+        discountType: discountData?.type || 'FIXED',
         totalAmount: finalTotal,
         isPaid: true,
         paymentDate: new Date(),
@@ -291,12 +344,8 @@ export class SessionsService {
     });
 
     let logMsg = `إنهاء جلسة لـ ${session.resource.name}. الإجمالي: ${finalTotal}`;
-    if (paymentMethod === 'SPLIT' && splitData) {
-        logMsg += ` (تقسيم: كاش ${splitData.cash} - شبكة ${splitData.net})`;
-    } else {
-        logMsg += ` (${paymentMethod === 'NET' ? 'شبكة' : 'كاش'})`;
-    }
-    await this.logsService.createLog(userId || 'SYSTEM', 'STOP_SESSION', logMsg);
+    // نمرر الـ userId كما هو، فإذا كان undefined سيتم تخزينه كـ null في قاعدة البيانات وهو مسموح به
+    await this.logsService.createLog(userId, 'STOP_SESSION', logMsg);
 
     this.eventEmitter.emit('session.updated', { ...session, status: 'COMPLETED' });
     return resultInvoice;

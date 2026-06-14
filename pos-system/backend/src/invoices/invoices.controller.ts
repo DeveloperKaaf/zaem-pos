@@ -14,12 +14,16 @@ export class InvoicesController {
   }
 
   @Post(':id/pay')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'CASHIER')
   pay(
     @Param('id', ParseIntPipe) id: number,
-    @Body('paymentMethod') paymentMethod: string
+    @Body() body: {
+      paymentMethod: string;
+      splitData?: { cash: number, net: number };
+      discountData?: { amount: number, type: 'FIXED' | 'PERCENT' }
+    }
   ) {
-    return this.invoicesService.markAsPaid(id, paymentMethod);
+    return this.invoicesService.markAsPaid(id, body.paymentMethod, body.splitData, body.discountData);
   }
 
   @Post(':id/add-item')

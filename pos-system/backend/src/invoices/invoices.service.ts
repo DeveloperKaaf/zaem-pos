@@ -11,53 +11,73 @@ export class InvoicesService {
     private logsService: LogsService,
   ) {}
 
-  async markAsPaid(invoiceId: number, paymentMethod: string = 'CASH', splitData?: { cash: number, net: number }) {
+  async markAsPaid(
+    invoiceId: number,
+    paymentMethod: string = 'CASH',
+    splitData?: { cash: number, net: number },
+    discountData?: { amount: number, type: 'FIXED' | 'PERCENT' }
+  ) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { session: { include: { resource: true } } }
+      include: { session: { include: { resource: true, user: { select: { name: true } } } } }
     });
 
     if (!invoice) throw new NotFoundException('Invoice not found');
+
+    const subtotal = invoice.timeAmount + invoice.itemsAmount;
+    let discountValue = 0;
+
+    if (discountData && discountData.amount > 0) {
+      if (discountData.type === 'PERCENT') {
+        discountValue = subtotal * (discountData.amount / 100);
+      } else {
+        discountValue = discountData.amount;
+      }
+    }
+
+    const finalTotal = Math.max(0, subtotal - discountValue);
 
     const updateData: any = {
       isPaid: true,
       paymentDate: new Date(),
       paymentMethod: paymentMethod,
+      discount: discountData?.amount || 0,
+      discountType: discountData?.type || 'FIXED',
+      totalAmount: finalTotal,
     };
 
     if (paymentMethod === 'SPLIT' && splitData) {
       updateData.cashAmount = splitData.cash;
       updateData.netAmount = splitData.net;
     } else if (paymentMethod === 'CASH') {
-      updateData.cashAmount = invoice.totalAmount;
+      updateData.cashAmount = finalTotal;
       updateData.netAmount = 0;
     } else if (paymentMethod === 'NET') {
       updateData.cashAmount = 0;
-      updateData.netAmount = invoice.totalAmount;
+      updateData.netAmount = finalTotal;
     }
 
     const updatedInvoice = await this.prisma.invoice.update({
       where: { id: invoiceId },
       data: updateData,
+      include: {
+        session: {
+          include: {
+            resource: true,
+            user: { select: { name: true } }
+          }
+        }
+      }
     });
 
-    let logMessage = `تحصيل مبلغ ${invoice.totalAmount} ريال لـ ${invoice.session.resource.name}`;
-    if (paymentMethod === 'SPLIT') {
-      logMessage += ` (جزئي: كاش ${splitData.cash} - شبكة ${splitData.net})`;
-    } else {
-      logMessage += ` (${paymentMethod === 'CASH' ? 'كاش' : 'شبكة'})`;
-    }
-
-    await this.logsService.createLog(
-      invoice.session.userId,
-      'INVOICE_PAID',
-      logMessage
-    );
+    let logMessage = `تحصيل مبلغ ${finalTotal} ريال (بعد خصم ${discountValue}) لـ ${invoice.session.resource.name}`;
+    await this.logsService.createLog(invoice.session.userId, 'INVOICE_PAID', logMessage);
 
     this.eventEmitter.emit('dashboard.updated', { type: 'INVOICE_PAID', invoiceId });
     return updatedInvoice;
   }
 
+  // ... دالة addItem و getPendingInvoices تبقى كما هي مع التأكد من تحديث totalAmount
   async addItem(invoiceId: number, productId: string, quantity: number) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
@@ -68,13 +88,11 @@ export class InvoicesService {
     const product = await this.prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new NotFoundException('Product not found');
 
-    // التأكد من توفر المخزون
     if (product.stock < quantity) {
-      throw new BadRequestException(`الكمية المطلوبة غير متوفرة في المخزون. المتوفر: ${product.stock}`);
+      throw new BadRequestException(`الكمية المطلوبة غير متوفرة. المتوفر: ${product.stock}`);
     }
 
     const itemTotal = product.price * quantity;
-
     let items = invoice.items as any[] || [];
     items.push({
       productId: product.id,
@@ -85,17 +103,21 @@ export class InvoicesService {
     });
 
     const newItemsAmount = invoice.itemsAmount + itemTotal;
-    const newTotalAmount = invoice.timeAmount + newItemsAmount;
+    const subtotal = invoice.timeAmount + newItemsAmount;
 
-    // تحديث الفاتورة وخصم المخزون في عملية واحدة (Transaction)
+    // إعادة حساب المجموع مع مراعاة الخصم المسجل مسبقاً إن وجد
+    let discountValue = 0;
+    if (invoice.discount > 0) {
+      discountValue = invoice.discountType === 'PERCENT' ? subtotal * (invoice.discount / 100) : invoice.discount;
+    }
+    const newTotalAmount = Math.max(0, subtotal - discountValue);
+
     const updatedInvoice = await this.prisma.$transaction(async (tx) => {
-      // 1. خصم من المخزون
       await tx.product.update({
         where: { id: productId },
         data: { stock: { decrement: quantity } }
       });
 
-      // 2. تحديث الفاتورة
       return tx.invoice.update({
         where: { id: invoiceId },
         data: {
@@ -112,20 +134,8 @@ export class InvoicesService {
 
   async getPendingInvoices() {
     return this.prisma.invoice.findMany({
-      where: {
-        isPaid: false,
-        session: {
-          status: 'COMPLETED'
-        }
-      },
-      include: {
-        session: {
-          include: {
-            resource: true,
-            user: { select: { name: true } }
-          }
-        }
-      },
+      where: { isPaid: false, session: { status: 'COMPLETED' } },
+      include: { session: { include: { resource: true, user: { select: { name: true } } } } },
       orderBy: { createdAt: 'desc' }
     });
   }
