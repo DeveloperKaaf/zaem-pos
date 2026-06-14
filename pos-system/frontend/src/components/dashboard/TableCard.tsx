@@ -15,9 +15,85 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Play, Square, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle, Plus, Minus, ShoppingCart, Wallet, Landmark, Split } from "lucide-react";
+import { Play, Square, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle, Plus, Minus, ShoppingCart, Wallet, Landmark, Split, Printer } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
+
+// --- وظيفة الطباعة المخصصة لطابعات POS (ورق رول 80mm) ---
+const printPosReceipt = (inv: any) => {
+  if (!inv) return;
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+
+  const items = Array.isArray(inv.items) ? inv.items : [];
+  const itemsHtml = items.map((item: any) => `
+    <tr>
+        <td style="text-align:right">${item.name}</td>
+        <td style="text-align:center">${item.quantity}</td>
+        <td style="text-align:left">${item.total.toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  printWindow.document.write(`
+    <html dir="rtl">
+      <head>
+        <style>
+          @page { size: 80mm auto; margin: 0; }
+          body { font-family: 'Courier New', monospace; width: 72mm; margin: 0 auto; padding: 5px; font-size: 12px; line-height: 1.4; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .header { font-size: 16px; margin-bottom: 5px; }
+          .divider { border-top: 1px dashed #000; margin: 5px 0; }
+          table { width: 100%; border-collapse: collapse; }
+          .total-row { font-size: 14px; font-weight: bold; margin-top: 5px; }
+          .footer { font-size: 10px; margin-top: 10px; }
+        </style>
+      </head>
+      <body onload="window.print(); setTimeout(() => window.close(), 500);">
+        <div class="center bold header">مركز زعيم الكرة</div>
+        <div class="center">فاتورة مبيعات مبسطة</div>
+        <div class="divider"></div>
+        <div>رقم الفاتورة: #${inv.id}</div>
+        <div>التاريخ: ${new Date(inv.paymentDate || inv.createdAt).toLocaleString('ar-SA')}</div>
+        <div>الموظف: ${inv.session?.user?.name || '---'}</div>
+        <div class="divider"></div>
+        <div class="bold">الجهاز: ${inv.session?.resource?.name || '---'}</div>
+        <div class="divider"></div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:right">الصنف</th>
+              <th style="text-align:center">ع</th>
+              <th style="text-align:left">السعر</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="text-align:right">وقت اللعب</td>
+              <td style="text-align:center">1</td>
+              <td style="text-align:left">${inv.timeAmount.toFixed(2)}</td>
+            </tr>
+            ${itemsHtml}
+          </tbody>
+        </table>
+        <div class="divider"></div>
+        <div class="total-row">
+          <div style="display:flex; justify-content:space-between;">
+            <span>المجموع النهائي:</span>
+            <span>${inv.totalAmount.toFixed(2)} ريال</span>
+          </div>
+        </div>
+        <div style="margin-top:5px">
+            طريقة الدفع: ${inv.paymentMethod === 'NET' ? 'شبكة' : inv.paymentMethod === 'CASH' ? 'كاش' : inv.paymentMethod === 'SPLIT' ? 'تقسيم' : '---'}
+            ${inv.paymentMethod === 'SPLIT' ? `<br>كاش: ${inv.cashAmount} - شبكة: ${inv.netAmount}` : ''}
+        </div>
+        <div class="divider"></div>
+        <div class="center footer">شكراً لزيارتكم</div>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+};
 
 export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -170,12 +246,6 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         });
       }
 
-      // إذا كانت الطلبات مدفوعة فورياً (مثل الكاش والشبكة)
-      if (paymentMethod !== 'LATER') {
-          // يمكن هنا استدعاء دفع الفاتورة جزئياً أو كلياً إذا تطلب النظام ذلك
-          // حالياً النظام يضيف الطلبات للفاتورة الأساسية
-      }
-
       onUpdate();
       setCart({});
       setShowConfirmOrder(false);
@@ -212,6 +282,8 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         })
       });
       if (res.ok) {
+        const inv = await res.json();
+        if (duration > 0) printPosReceipt(inv); // طباعة تلقائية عند الدفع المسبق
         setShowPayment(false);
         setIsSplit(false);
         onUpdate();
@@ -239,6 +311,8 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         })
       });
       if (res.ok) {
+        const inv = await res.json();
+        printPosReceipt(inv); // طباعة فاتورة التمديد تلقائياً
         setShowExtendPayment(false);
         setShowExtend(false);
         setIsSplit(false);
@@ -262,6 +336,8 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
         body: JSON.stringify({ paymentMethod, splitData })
       });
       if (res.ok) {
+        const inv = await res.json();
+        printPosReceipt(inv); // طباعة الفاتورة النهائية تلقائياً عند الإغلاق
         setIsStoppingOpen(false);
         setIsSplit(false);
         onUpdate();

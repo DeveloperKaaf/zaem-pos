@@ -50,7 +50,7 @@ export class SessionsService {
     }
 
     try {
-      const session = await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const newSession = await tx.session.create({
           data: {
             resourceId,
@@ -87,9 +87,19 @@ export class SessionsService {
            }
         }
 
-        await tx.invoice.create({ data: invoiceData });
+        const invoice = await tx.invoice.create({
+          data: invoiceData,
+          include: {
+            session: {
+              include: {
+                resource: true,
+                user: { select: { name: true } }
+              }
+            }
+          }
+        });
 
-        return newSession;
+        return { session: newSession, invoice };
       });
 
       let logMsg = `بدء جلسة لـ ${resource.name}. المبلغ: ${initialPrice}`;
@@ -102,32 +112,27 @@ export class SessionsService {
 
       // Handle Timers
       const timeouts: { warning?: NodeJS.Timeout, stop?: NodeJS.Timeout } = {};
-
       if (durationMin > 5) {
         const warningTime = (durationMin - 5) * 60 * 1000;
         timeouts.warning = setTimeout(async () => {
-          // Double check if session is still active before flickering
-          const currentSession = await this.prisma.session.findUnique({ where: { id: session.id } });
+          const currentSession = await this.prisma.session.findUnique({ where: { id: result.session.id } });
           if (currentSession && currentSession.status === 'ACTIVE' && resource.tuyaDeviceId) {
-            console.log(`Flickering device ${resource.name} for warning`);
             await this.tuyaService.controlDevice(resource.tuyaDeviceId, false, resource.tuyaSwitchCode);
             setTimeout(() => this.tuyaService.controlDevice(resource.tuyaDeviceId, true, resource.tuyaSwitchCode), 800);
           }
         }, warningTime);
       }
-
       if (durationMin > 0) {
         timeouts.stop = setTimeout(() => {
-          this.stopSession(session.id, 'SYSTEM');
+          this.stopSession(result.session.id, 'SYSTEM');
         }, durationMin * 60 * 1000);
       }
-
       if (timeouts.warning || timeouts.stop) {
-        this.sessionTimeouts.set(session.id, timeouts);
+        this.sessionTimeouts.set(result.session.id, timeouts);
       }
 
-      this.eventEmitter.emit('session.updated', session);
-      return session;
+      this.eventEmitter.emit('session.updated', result.session);
+      return result.invoice;
     } catch (error) {
       console.error('Prisma Error:', error);
       throw new InternalServerErrorException('فشل في حفظ الجلسة.');
@@ -147,7 +152,7 @@ export class SessionsService {
     const priceConfig = session.resource.prices.find(p => p.durationMin === extraMin);
     const extraPrice = priceConfig?.price || 0;
 
-    const updatedSession = await this.prisma.$transaction(async (tx) => {
+    const updatedInvoice = await this.prisma.$transaction(async (tx) => {
       const newDuration = session.durationMin + extraMin;
       const sess = await tx.session.update({
         where: { id: sessionId },
@@ -169,26 +174,26 @@ export class SessionsService {
           invoiceUpdate.netAmount = { increment: extraPrice };
       }
 
-      await tx.invoice.update({
+      return tx.invoice.update({
         where: { sessionId: sessionId },
-        data: invoiceUpdate
+        data: invoiceUpdate,
+        include: {
+          session: {
+            include: {
+              resource: true,
+              user: { select: { name: true } }
+            }
+          }
+        }
       });
-      return sess;
     });
 
-    // Clear old timers and set new ones for the extended duration
     this.clearSessionTimeouts(sessionId);
-    const remainingMs = (updatedSession.durationMin * 60 * 1000) - (Date.now() - session.startTime.getTime());
+    const remainingMs = ( (session.durationMin + extraMin) * 60 * 1000) - (Date.now() - session.startTime.getTime());
 
     if (remainingMs > 0) {
       const timeouts: { warning?: NodeJS.Timeout, stop?: NodeJS.Timeout } = {};
-
-      // Stop timer
-      timeouts.stop = setTimeout(() => {
-        this.stopSession(sessionId, 'SYSTEM');
-      }, remainingMs);
-
-      // Warning timer (if applicable)
+      timeouts.stop = setTimeout(() => { this.stopSession(sessionId, 'SYSTEM'); }, remainingMs);
       const warningRemainingMs = remainingMs - (5 * 60 * 1000);
       if (warningRemainingMs > 0) {
         timeouts.warning = setTimeout(async () => {
@@ -210,14 +215,12 @@ export class SessionsService {
     }
     await this.logsService.createLog(userId, 'EXTEND_SESSION', logMsg);
 
-    this.eventEmitter.emit('session.updated', updatedSession);
-    return updatedSession;
+    this.eventEmitter.emit('session.updated', { id: sessionId });
+    return updatedInvoice;
   }
 
   async stopSession(sessionId: string, userId?: string, paymentMethod: string = 'CASH', splitData?: { cash: number, net: number }) {
-    // Clear any pending timers for this session
     this.clearSessionTimeouts(sessionId);
-
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
       include: { resource: true, invoice: true },
@@ -226,7 +229,6 @@ export class SessionsService {
     if (!session || session.status !== 'ACTIVE') return;
 
     let finalTimeAmount = session.invoice.timeAmount;
-
     if (session.durationMin === 0) {
       const now = new Date();
       const diffMs = now.getTime() - session.startTime.getTime();
@@ -244,7 +246,7 @@ export class SessionsService {
 
     const finalTotal = finalTimeAmount + session.invoice.itemsAmount;
 
-    await this.prisma.$transaction(async (tx) => {
+    const resultInvoice = await this.prisma.$transaction(async (tx) => {
       await tx.session.update({
         where: { id: sessionId },
         data: { status: 'COMPLETED', endTime: new Date() },
@@ -274,9 +276,17 @@ export class SessionsService {
           invoiceUpdate.cashAmount = 0;
       }
 
-      await tx.invoice.update({
+      return tx.invoice.update({
         where: { sessionId: sessionId },
         data: invoiceUpdate,
+        include: {
+          session: {
+            include: {
+              resource: true,
+              user: { select: { name: true } }
+            }
+          }
+        }
       });
     });
 
@@ -289,5 +299,6 @@ export class SessionsService {
     await this.logsService.createLog(userId || 'SYSTEM', 'STOP_SESSION', logMsg);
 
     this.eventEmitter.emit('session.updated', { ...session, status: 'COMPLETED' });
+    return resultInvoice;
   }
 }
