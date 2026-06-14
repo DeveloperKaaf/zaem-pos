@@ -15,7 +15,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Play, Square, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle, Plus, Minus, ShoppingCart, Wallet, Landmark, Split, Printer } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Play, Square, CreditCard, Gamepad2, Utensils, PlusCircle, Target, Trophy, Laptop, Zap, Pause, PlayCircle, Plus, Minus, ShoppingCart, Wallet, Landmark, Split, Printer, Tag } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 
@@ -25,9 +32,14 @@ const printPosReceipt = (inv: any) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
 
-  // تحديد نص المدة بناءً على الجلسة
   const sessionDuration = inv.session?.durationMin;
   const durationDisplayText = sessionDuration > 0 ? `${sessionDuration} د` : "وقت مفتوح";
+
+  const subtotal = inv.timeAmount + (inv.itemsAmount || 0);
+  let actualDiscountValue = 0;
+  if (inv.discount > 0) {
+    actualDiscountValue = inv.discountType === 'PERCENT' ? (subtotal * (inv.discount / 100)) : inv.discount;
+  }
 
   const items = Array.isArray(inv.items) ? inv.items : [];
   const itemsHtml = items.map((item: any) => `
@@ -51,6 +63,7 @@ const printPosReceipt = (inv: any) => {
           table { width: 100%; border-collapse: collapse; }
           .total-row { font-size: 14px; font-weight: bold; margin-top: 5px; }
           .footer { font-size: 10px; margin-top: 10px; }
+          .discount-line { font-size: 11px; color: #333; }
         </style>
       </head>
       <body onload="window.print(); setTimeout(() => window.close(), 500);">
@@ -81,13 +94,27 @@ const printPosReceipt = (inv: any) => {
           </tbody>
         </table>
         <div class="divider"></div>
+
+        ${inv.discount > 0 ? `
+          <div style="display:flex; justify-content:space-between;" class="discount-line">
+            <span>المجموع الفرعي:</span>
+            <span>${subtotal.toFixed(2)} ريال</span>
+          </div>
+          <div style="display:flex; justify-content:space-between;" class="discount-line">
+            <span>الخصم المستقطع (${inv.discountType === 'PERCENT' ? inv.discount + '%' : 'مبلغ ثابت'}):</span>
+            <span>-${actualDiscountValue.toFixed(2)} ريال</span>
+          </div>
+          <div class="divider"></div>
+        ` : ''}
+
         <div class="total-row">
           <div style="display:flex; justify-content:space-between;">
-            <span>المجموع النهائي:</span>
+            <span>الإجمالي النهائي:</span>
             <span>${inv.totalAmount.toFixed(2)} ريال</span>
           </div>
         </div>
-        <div style="margin-top:5px">
+
+        <div style="margin-top:5px; font-size:11px;">
             طريقة الدفع: ${inv.paymentMethod === 'NET' ? 'شبكة' : inv.paymentMethod === 'CASH' ? 'كاش' : inv.paymentMethod === 'SPLIT' ? 'تقسيم' : '---'}
             ${inv.paymentMethod === 'SPLIT' ? `<br>كاش: ${inv.cashAmount} - شبكة: ${inv.netAmount}` : ''}
         </div>
@@ -111,6 +138,10 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
   const [selectedExtendPrice, setSelectedExtendPrice] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState<string>("00:00:00");
   const [currentTimeAmount, setCurrentTimeAmount] = useState<number>(0);
+
+  // الخصم
+  const [discountAmount, setDiscountAmount] = useState<string>("0");
+  const [discountType, setDiscountType] = useState<'FIXED' | 'PERCENT'>('FIXED');
 
   // حالات التقسيم (Split Payment)
   const [isSplit, setIsSplit] = useState(false);
@@ -140,14 +171,27 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     setIsSplit(false);
     setCashPart("");
     setNetPart("");
+    setDiscountAmount("0");
+    setDiscountType("FIXED");
   }, [activeSession?.id]);
+
+  // دالة لحساب الإجمالي بعد الخصم في الواجهة
+  const calculateFinalTotal = (subtotal: number) => {
+    const disc = parseFloat(discountAmount) || 0;
+    if (disc <= 0) return subtotal;
+    if (discountType === 'PERCENT') {
+      return Math.max(0, subtotal - (subtotal * (disc / 100)));
+    }
+    return Math.max(0, subtotal - disc);
+  };
 
   // تحديث الجزء الشبكة تلقائياً عند تغيير الكاش والعكس
   const handleCashChange = (val: string, total: number) => {
     setCashPart(val);
     const cash = parseFloat(val) || 0;
-    if (cash <= total) {
-      setNetPart((total - cash).toFixed(2));
+    const finalTotal = calculateFinalTotal(total);
+    if (cash <= finalTotal) {
+      setNetPart((finalTotal - cash).toFixed(2));
     } else {
       setNetPart("0");
     }
@@ -271,6 +315,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     setLoading(true);
     try {
       const splitData = paymentMethod === 'SPLIT' ? { cash: parseFloat(cashPart), net: parseFloat(netPart) } : null;
+      const discountData = parseFloat(discountAmount) > 0 ? { amount: parseFloat(discountAmount), type: discountType } : null;
 
       const res = await fetch(`${API_BASE_URL}/sessions/start`, {
         method: 'POST',
@@ -282,7 +327,8 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             resourceId: resource.id,
             durationMin: duration,
             paymentMethod,
-            splitData
+            splitData,
+            discountData
         })
       });
       if (res.ok) {
@@ -301,6 +347,8 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     setLoading(true);
     try {
       const splitData = paymentMethod === 'SPLIT' ? { cash: parseFloat(cashPart), net: parseFloat(netPart) } : null;
+      const discountData = parseFloat(discountAmount) > 0 ? { amount: parseFloat(discountAmount), type: discountType } : null;
+
       const res = await fetch(`${API_BASE_URL}/sessions/extend`, {
         method: 'POST',
         headers: {
@@ -311,7 +359,8 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
           sessionId: activeSession.id,
           extraMin: selectedExtendPrice.durationMin,
           paymentMethod,
-          splitData
+          splitData,
+          discountData
         })
       });
       if (res.ok) {
@@ -331,13 +380,15 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
     setLoading(true);
     try {
       const splitData = paymentMethod === 'SPLIT' ? { cash: parseFloat(cashPart), net: parseFloat(netPart) } : null;
+      const discountData = parseFloat(discountAmount) > 0 ? { amount: parseFloat(discountAmount), type: discountType } : null;
+
       const res = await fetch(`${API_BASE_URL}/sessions/stop/${activeSession.id}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ paymentMethod, splitData })
+        body: JSON.stringify({ paymentMethod, splitData, discountData })
       });
       if (res.ok) {
         const inv = await res.json();
@@ -352,6 +403,43 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
 
   const isAvailable = resource.status === 'AVAILABLE';
   const isOpenTime = activeSession && activeSession.durationMin === 0;
+
+  // مكون الخصم المكرر
+  const DiscountSection = ({ subtotal }: { subtotal: number }) => (
+    <div className="space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-4">
+      <div className="flex items-center gap-2 text-blue-800 font-bold text-sm mb-1">
+        <Tag className="h-4 w-4" /> إضافة خصم (اختياري)
+      </div>
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <Input
+            type="number"
+            placeholder="المبلغ أو النسبة"
+            value={discountAmount}
+            onChange={(e) => setDiscountAmount(e.target.value)}
+            className="bg-white"
+          />
+        </div>
+        <div className="w-32">
+          <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
+            <SelectTrigger className="bg-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="FIXED">ريال</SelectItem>
+              <SelectItem value="PERCENT">بالمئة %</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      {parseFloat(discountAmount) > 0 && (
+        <div className="text-xs font-bold text-blue-600 flex justify-between px-1">
+          <span>المبلغ بعد الخصم:</span>
+          <span>{calculateFinalTotal(subtotal).toFixed(2)} ريال</span>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <Card className={`relative overflow-hidden border-2 shadow-lg transition-all ${!isAvailable ? 'border-red-600 bg-red-50/30' : 'border-emerald-400 bg-white'}`}>
@@ -430,11 +518,14 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
                             <DialogTitle className="text-2xl font-bold">إنهاء الحساب - {resource.name}</DialogTitle>
                         </DialogHeader>
                         <div className="py-6 text-center">
-                            <p className="text-slate-500 font-bold">المبلغ الإجمالي المستحق:</p>
+                            <p className="text-slate-500 font-bold">المبلغ قبل الخصم:</p>
                             <div className="text-6xl font-black text-slate-900 mt-2">
                                 {(currentTimeAmount + (activeInvoice?.itemsAmount || 0)).toFixed(2)} <span className="text-xl">ريال</span>
                             </div>
                         </div>
+
+                        {/* قسم الخصم */}
+                        <DiscountSection subtotal={(currentTimeAmount + (activeInvoice?.itemsAmount || 0))} />
 
                         {isSplit && (
                             <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 mb-4">
@@ -500,9 +591,30 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
                         {isPaused ? <><PlayCircle className="ml-1 h-3 w-3" /> استمرار</> : <><Pause className="ml-1 h-3 w-3" /> مؤقت</>}
                       </Button>
                     ) : (
-                      <Button variant="outline" className="h-9 text-[10px] font-bold border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => setShowExtend(true)}>
-                        <PlusCircle className="ml-1 h-3 w-3" /> تمديد
-                      </Button>
+                      <Dialog open={showExtend} onOpenChange={setShowExtend}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" className="h-9 text-[10px] font-bold border-blue-200 text-blue-700 hover:bg-blue-50">
+                            <PlusCircle className="ml-1 h-3 w-3" /> تمديد
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent dir="rtl">
+                          <DialogHeader>
+                            <DialogTitle className="text-2xl font-bold">تمديد وقت {resource.name}</DialogTitle>
+                            <DialogDescription>اختر المدة التي تريد إضافتها للجلسة الحالية.</DialogDescription>
+                          </DialogHeader>
+                          <div className="grid grid-cols-1 gap-3 py-4">
+                            {resource.prices?.filter((p:any) => p.durationMin > 0).map((p: any) => (
+                              <Button key={p.id} variant="outline" className="h-16 text-xl font-bold hover:bg-emerald-50" onClick={() => {
+                                setSelectedExtendPrice(p);
+                                setShowExtend(false); // نغلق الحوار الحالي
+                                setTimeout(() => setShowExtendPayment(true), 100); // نفتح حوار الدفع بعد لحظة
+                              }}>
+                                +{p.durationMin} دقيقة - {p.price} ريال
+                              </Button>
+                            ))}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     )}
                     <Button variant="outline" className="h-9 text-[10px] font-bold" onClick={() => { setShowAddOrder(true); fetchProducts(); }}>
                       <Utensils className="ml-1 h-3 w-3" /> طلبات
@@ -524,11 +636,13 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             <DialogTitle className="text-2xl font-bold text-emerald-800">تأكيد الدفع</DialogTitle>
           </DialogHeader>
           <div className="py-6 text-center">
-            <p className="text-slate-500 font-bold">المبلغ المطلوب:</p>
+            <p className="text-slate-500 font-bold">المبلغ قبل الخصم:</p>
             <div className="text-6xl font-black text-slate-900 mt-2">
               {selectedPrice?.price} <span className="text-xl">ريال</span>
             </div>
           </div>
+
+          <DiscountSection subtotal={selectedPrice?.price || 0} />
 
           {isSplit && (
             <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 mb-4">
@@ -558,7 +672,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             </Button>
 
             {isSplit && (
-                <Button onClick={() => handleStartSession('SPLIT')} className="w-full h-14 bg-slate-900 text-white font-black text-lg mt-2" disabled={loading}>
+                <Button onClick={() => handleStartSession('SPLIT')} className="w-full h-14 bg-slate-900 text-white font-black text-lg" disabled={loading}>
                     تأكيد الدفع المختلط
                 </Button>
             )}
@@ -573,11 +687,13 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد دفع مبلغ التمديد</DialogTitle>
           </DialogHeader>
           <div className="py-6 text-center">
-            <p className="text-slate-500 font-bold">المبلغ المطلوب:</p>
+            <p className="text-slate-500 font-bold">مبلغ التمديد قبل الخصم:</p>
             <div className="text-6xl font-black text-slate-900 mt-2">
               {selectedExtendPrice?.price} <span className="text-xl">ريال</span>
             </div>
           </div>
+
+          <DiscountSection subtotal={selectedExtendPrice?.price || 0} />
 
           {isSplit && (
             <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 mb-4">
@@ -683,10 +799,12 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
               ))}
             </div>
             <div className="text-center py-4">
-              <p className="text-slate-500 font-bold text-sm">المجموع المطلوب تحصيله:</p>
+              <p className="text-slate-500 font-bold text-sm">المجموع قبل الخصم:</p>
               <p className="text-5xl font-black text-slate-900">{cartTotal.toFixed(2)} <span className="text-xl">ريال</span></p>
             </div>
           </div>
+
+          <DiscountSection subtotal={cartTotal} />
 
           {isSplit && (
             <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 mb-4">

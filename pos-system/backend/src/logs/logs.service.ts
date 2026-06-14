@@ -5,10 +5,14 @@ import { PrismaService } from '../prisma/prisma.service';
 export class LogsService {
   constructor(private prisma: PrismaService) {}
 
-  async createLog(userId: string, action: string, details?: string) {
+  async createLog(userId: string | undefined, action: string, details?: string) {
+    // إذا كان userId غير موجود أو هو 'SYSTEM'، نقوم بتخزينه كـ null
+    // قاعدة البيانات تسمح بـ null في هذا الحقل، وهذا سيمنع خطأ الـ Foreign Key
+    const finalUserId = (userId === 'SYSTEM' || !userId) ? null : userId;
+
     return this.prisma.actionLog.create({
       data: {
-        userId,
+        userId: finalUserId,
         action,
         details,
       },

@@ -13,7 +13,16 @@ import {
   DialogDescription,
   DialogFooter
 } from "@/components/ui/dialog";
-import { CheckCircle, Printer, RefreshCw, Clock, Timer, Wallet, PlusCircle, Square, CreditCard, Landmark } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { CheckCircle, Printer, RefreshCw, Clock, Timer, Wallet, PlusCircle, Square, CreditCard, Landmark, Tag } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 import { io } from "socket.io-client";
@@ -24,9 +33,15 @@ const printPosReceipt = (inv: any) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
 
-  // تحديد نص المدة بناءً على الجلسة
   const sessionDuration = inv.session?.durationMin;
   const durationDisplayText = sessionDuration > 0 ? `${sessionDuration} د` : "وقت مفتوح";
+
+  // حساب الحقول للعرض
+  const subtotal = inv.timeAmount + (inv.itemsAmount || 0);
+  let actualDiscountValue = 0;
+  if (inv.discount > 0) {
+    actualDiscountValue = inv.discountType === 'PERCENT' ? (subtotal * (inv.discount / 100)) : inv.discount;
+  }
 
   const items = Array.isArray(inv.items) ? inv.items : [];
   const itemsHtml = items.map((item: any) => `
@@ -50,6 +65,7 @@ const printPosReceipt = (inv: any) => {
           table { width: 100%; border-collapse: collapse; }
           .total-row { font-size: 14px; font-weight: bold; margin-top: 5px; }
           .footer { font-size: 10px; margin-top: 10px; }
+          .discount-line { font-size: 11px; color: #333; }
         </style>
       </head>
       <body onload="window.print(); setTimeout(() => window.close(), 500);">
@@ -80,13 +96,27 @@ const printPosReceipt = (inv: any) => {
           </tbody>
         </table>
         <div class="divider"></div>
+
+        ${inv.discount > 0 ? `
+          <div style="display:flex; justify-content:space-between;" class="discount-line">
+            <span>المجموع الفرعي:</span>
+            <span>${subtotal.toFixed(2)} ريال</span>
+          </div>
+          <div style="display:flex; justify-content:space-between;" class="discount-line">
+            <span>الخصم المستقطع (${inv.discountType === 'PERCENT' ? inv.discount + '%' : 'مبلغ ثابت'}):</span>
+            <span>-${actualDiscountValue.toFixed(2)} ريال</span>
+          </div>
+          <div class="divider"></div>
+        ` : ''}
+
         <div class="total-row">
           <div style="display:flex; justify-content:space-between;">
-            <span>المجموع النهائي:</span>
+            <span>الإجمالي النهائي:</span>
             <span>${inv.totalAmount.toFixed(2)} ريال</span>
           </div>
         </div>
-        <div style="margin-top:5px">
+
+        <div style="margin-top:5px; font-size:11px;">
             طريقة الدفع: ${inv.paymentMethod === 'NET' ? 'شبكة' : inv.paymentMethod === 'CASH' ? 'كاش' : inv.paymentMethod === 'SPLIT' ? 'تقسيم' : '---'}
             ${inv.paymentMethod === 'SPLIT' ? `<br>كاش: ${inv.cashAmount} - شبكة: ${inv.netAmount}` : ''}
         </div>
@@ -176,6 +206,10 @@ export default function InvoicesPage() {
   const [selectedExtendPrice, setSelectedExtendPrice] = useState<any>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
 
+  // الخصم
+  const [discountAmount, setDiscountAmount] = useState<string>("0");
+  const [discountType, setDiscountType] = useState<'FIXED' | 'PERCENT'>('FIXED');
+
   const router = useRouter();
 
   const fetchData = useCallback(async () => {
@@ -212,19 +246,31 @@ export default function InvoicesPage() {
     return () => { socket.disconnect(); };
   }, [fetchData]);
 
+  const calculateFinalTotal = (subtotal: number) => {
+    const disc = parseFloat(discountAmount) || 0;
+    if (disc <= 0) return subtotal;
+    if (discountType === 'PERCENT') {
+      return Math.max(0, subtotal - (subtotal * (disc / 100)));
+    }
+    return Math.max(0, subtotal - disc);
+  };
+
   const handlePay = async (id: number, paymentMethod: string) => {
     const token = localStorage.getItem('token');
+    const discountData = parseFloat(discountAmount) > 0 ? { amount: parseFloat(discountAmount), type: discountType } : null;
+
     const res = await fetch(`${API_BASE_URL}/invoices/${id}/pay`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ paymentMethod })
+      body: JSON.stringify({ paymentMethod, discountData })
     });
     if (res.ok) {
       const paidInvoice = await res.json();
       setShowInvoicePayment(false);
+      setDiscountAmount("0");
       printPosReceipt(paidInvoice); // طباعة تلقائية
       fetchData();
     }
@@ -244,6 +290,8 @@ export default function InvoicesPage() {
 
   const handleFinalExtend = async (paymentMethod: string) => {
     const token = localStorage.getItem('token');
+    const discountData = parseFloat(discountAmount) > 0 ? { amount: parseFloat(discountAmount), type: discountType } : null;
+
     try {
       const res = await fetch(`${API_BASE_URL}/sessions/extend`, {
         method: 'POST',
@@ -254,16 +302,56 @@ export default function InvoicesPage() {
         body: JSON.stringify({
           sessionId: selectedSession.id,
           extraMin: selectedExtendPrice.durationMin,
-          paymentMethod
+          paymentMethod,
+          discountData
         })
       });
       if (res.ok) {
+        const inv = await res.json();
+        printPosReceipt(inv); // طباعة فاتورة التمديد
         setShowExtendPayment(false);
         setShowExtend(false);
+        setDiscountAmount("0");
         fetchData();
       }
     } catch (e) { alert("خطأ في التمديد"); }
   };
+
+  const DiscountSection = ({ subtotal }: { subtotal: number }) => (
+    <div className="space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-4">
+      <div className="flex items-center gap-2 text-blue-800 font-bold text-sm mb-1">
+        <Tag className="h-4 w-4" /> إضافة خصم (اختياري)
+      </div>
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <Input
+            type="number"
+            placeholder="المبلغ أو النسبة"
+            value={discountAmount}
+            onChange={(e) => setDiscountAmount(e.target.value)}
+            className="bg-white"
+          />
+        </div>
+        <div className="w-32">
+          <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
+            <SelectTrigger className="bg-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="FIXED">ريال</SelectItem>
+              <SelectItem value="PERCENT">بالمئة %</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      {parseFloat(discountAmount) > 0 && (
+        <div className="text-xs font-bold text-blue-600 flex justify-between px-1">
+          <span>المبلغ بعد الخصم:</span>
+          <span>{calculateFinalTotal(subtotal).toFixed(2)} ريال</span>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-8 bg-slate-50 min-h-screen" dir="rtl">
@@ -371,14 +459,16 @@ export default function InvoicesPage() {
         <DialogContent dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد دفع مبلغ التمديد</DialogTitle>
-            <DialogDescription>سيتم إضافة {selectedExtendPrice?.durationMin} دقيقة لـ {selectedSession?.resourceName}.</DialogDescription>
           </DialogHeader>
           <div className="py-10 text-center">
-            <p className="text-slate-500 font-bold">مبلغ التمديد المطلوب:</p>
+            <p className="text-slate-500 font-bold">مبلغ التمديد قبل الخصم:</p>
             <div className="text-7xl font-black text-slate-900 mt-2">
               {selectedExtendPrice?.price} <span className="text-2xl">ريال</span>
             </div>
           </div>
+
+          <DiscountSection subtotal={selectedExtendPrice?.price || 0} />
+
           <DialogFooter className="gap-3 flex-row">
             <Button onClick={() => handleFinalExtend('CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg flex flex-col gap-1">
               <Wallet className="h-8 w-8" />
@@ -398,14 +488,16 @@ export default function InvoicesPage() {
         <DialogContent dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-emerald-800">تأكيد الدفع</DialogTitle>
-            <DialogDescription>تحصيل مبلغ الفاتورة لـ {selectedInvoice?.session?.resource?.name}.</DialogDescription>
           </DialogHeader>
           <div className="py-10 text-center">
-            <p className="text-slate-500 font-bold">المبلغ المطلوب:</p>
+            <p className="text-slate-500 font-bold">المبلغ قبل الخصم:</p>
             <div className="text-7xl font-black text-emerald-700 mt-2">
               {selectedInvoice?.totalAmount.toFixed(2)} <span className="text-xl">ريال</span>
             </div>
           </div>
+
+          <DiscountSection subtotal={selectedInvoice?.totalAmount || 0} />
+
           <DialogFooter className="gap-3 flex-row">
             <Button onClick={() => handlePay(selectedInvoice.id, 'CASH')} className="flex-1 h-20 text-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg flex flex-col gap-1">
               <Wallet className="h-8 w-8" />
