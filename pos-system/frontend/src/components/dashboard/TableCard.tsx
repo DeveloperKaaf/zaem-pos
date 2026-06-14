@@ -25,6 +25,10 @@ const printPosReceipt = (inv: any) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
 
+  // تحديد نص المدة بناءً على الجلسة
+  const sessionDuration = inv.session?.durationMin;
+  const durationDisplayText = sessionDuration > 0 ? `${sessionDuration} د` : "وقت مفتوح";
+
   const items = Array.isArray(inv.items) ? inv.items : [];
   const itemsHtml = items.map((item: any) => `
     <tr>
@@ -63,14 +67,14 @@ const printPosReceipt = (inv: any) => {
           <thead>
             <tr>
               <th style="text-align:right">الصنف</th>
-              <th style="text-align:center">ع</th>
+              <th style="text-align:center">المدة</th>
               <th style="text-align:left">السعر</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td style="text-align:right">وقت اللعب</td>
-              <td style="text-align:center">1</td>
+              <td style="text-align:center">${durationDisplayText}</td>
               <td style="text-align:left">${inv.timeAmount.toFixed(2)}</td>
             </tr>
             ${itemsHtml}
@@ -554,7 +558,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             </Button>
 
             {isSplit && (
-                <Button onClick={() => handleStartSession('SPLIT')} className="w-full h-14 bg-slate-900 text-white font-black text-lg" disabled={loading}>
+                <Button onClick={() => handleStartSession('SPLIT')} className="w-full h-14 bg-slate-900 text-white font-black text-lg mt-2" disabled={loading}>
                     تأكيد الدفع المختلط
                 </Button>
             )}
@@ -569,7 +573,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             <DialogTitle className="text-2xl font-bold text-blue-800">تأكيد دفع مبلغ التمديد</DialogTitle>
           </DialogHeader>
           <div className="py-6 text-center">
-            <p className="text-slate-500 font-bold">مبلغ التمديد المطلوب:</p>
+            <p className="text-slate-500 font-bold">المبلغ المطلوب:</p>
             <div className="text-6xl font-black text-slate-900 mt-2">
               {selectedExtendPrice?.price} <span className="text-xl">ريال</span>
             </div>
@@ -712,7 +716,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
             </Button>
 
             {isSplit && (
-                <Button onClick={() => handleConfirmOrders('SPLIT')} className="w-full h-14 bg-slate-900 text-white font-black text-lg" disabled={loading}>
+                <Button onClick={() => handleConfirmOrders('SPLIT')} className="w-full h-14 bg-slate-900 text-white font-black text-lg mt-2" disabled={loading}>
                     تأكيد الدفع المختلط
                 </Button>
             )}

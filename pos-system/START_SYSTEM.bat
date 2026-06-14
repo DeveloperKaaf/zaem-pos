@@ -67,5 +67,5 @@ pause
 
 
 git add .
-git commit -m "تحديث السويتشات"
+git commit -m "تحديث الطابعات"
 git push origin main

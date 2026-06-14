@@ -18,7 +18,86 @@ import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 import { io } from "socket.io-client";
 
-// --- مكون العداد الحي ---
+// --- وظيفة الطباعة المخصصة لطابعات POS (ورق رول 80mm) ---
+const printPosReceipt = (inv: any) => {
+  if (!inv) return;
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+
+  // تحديد نص المدة بناءً على الجلسة
+  const sessionDuration = inv.session?.durationMin;
+  const durationDisplayText = sessionDuration > 0 ? `${sessionDuration} د` : "وقت مفتوح";
+
+  const items = Array.isArray(inv.items) ? inv.items : [];
+  const itemsHtml = items.map((item: any) => `
+    <tr>
+        <td style="text-align:right">${item.name}</td>
+        <td style="text-align:center">${item.quantity}</td>
+        <td style="text-align:left">${item.total.toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  printWindow.document.write(`
+    <html dir="rtl">
+      <head>
+        <style>
+          @page { size: 80mm auto; margin: 0; }
+          body { font-family: 'Courier New', monospace; width: 72mm; margin: 0 auto; padding: 5px; font-size: 12px; line-height: 1.4; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .header { font-size: 16px; margin-bottom: 5px; }
+          .divider { border-top: 1px dashed #000; margin: 5px 0; }
+          table { width: 100%; border-collapse: collapse; }
+          .total-row { font-size: 14px; font-weight: bold; margin-top: 5px; }
+          .footer { font-size: 10px; margin-top: 10px; }
+        </style>
+      </head>
+      <body onload="window.print(); setTimeout(() => window.close(), 500);">
+        <div class="center bold header">مركز زعيم الكرة</div>
+        <div class="center">فاتورة مبيعات مبسطة</div>
+        <div class="divider"></div>
+        <div>رقم الفاتورة: #${inv.id}</div>
+        <div>التاريخ: ${new Date(inv.paymentDate || inv.createdAt).toLocaleString('ar-SA')}</div>
+        <div>الموظف: ${inv.session?.user?.name || '---'}</div>
+        <div class="divider"></div>
+        <div class="bold">الجهاز: ${inv.session?.resource?.name || '---'}</div>
+        <div class="divider"></div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:right">الصنف</th>
+              <th style="text-align:center">المدة</th>
+              <th style="text-align:left">السعر</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="text-align:right">وقت اللعب</td>
+              <td style="text-align:center">${durationDisplayText}</td>
+              <td style="text-align:left">${inv.timeAmount.toFixed(2)}</td>
+            </tr>
+            ${itemsHtml}
+          </tbody>
+        </table>
+        <div class="divider"></div>
+        <div class="total-row">
+          <div style="display:flex; justify-content:space-between;">
+            <span>المجموع النهائي:</span>
+            <span>${inv.totalAmount.toFixed(2)} ريال</span>
+          </div>
+        </div>
+        <div style="margin-top:5px">
+            طريقة الدفع: ${inv.paymentMethod === 'NET' ? 'شبكة' : inv.paymentMethod === 'CASH' ? 'كاش' : inv.paymentMethod === 'SPLIT' ? 'تقسيم' : '---'}
+            ${inv.paymentMethod === 'SPLIT' ? `<br>كاش: ${inv.cashAmount} - شبكة: ${inv.netAmount}` : ''}
+        </div>
+        <div class="divider"></div>
+        <div class="center footer">شكراً لزيارتكم</div>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+};
+
 function ActiveSessionRow({ session, onExtend, onStop }: { session: any, onExtend: (s: any) => void, onStop: (s: any) => void }) {
   const [displayTime, setDisplayTime] = useState("");
   const [isWarning, setIsWarning] = useState(false);
@@ -144,7 +223,9 @@ export default function InvoicesPage() {
       body: JSON.stringify({ paymentMethod })
     });
     if (res.ok) {
+      const paidInvoice = await res.json();
       setShowInvoicePayment(false);
+      printPosReceipt(paidInvoice); // طباعة تلقائية
       fetchData();
     }
   };
@@ -182,39 +263,6 @@ export default function InvoicesPage() {
         fetchData();
       }
     } catch (e) { alert("خطأ في التمديد"); }
-  };
-
-  const printInvoice = (inv: any) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <html dir="rtl">
-        <head>
-          <title>فاتورة - ${inv.session.resource.name}</title>
-          <style>
-            body { font-family: Arial; padding: 20px; text-align: center; line-height: 1.6; }
-            .header { border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 20px; }
-            .total { font-size: 28px; font-weight: bold; margin-top: 20px; border-top: 2px dashed #000; padding-top: 10px; }
-            .detail { font-size: 16px; margin: 10px 0; }
-            .payment-badge { background: #eee; padding: 5px 15px; border-radius: 5px; font-weight: bold; margin-top: 10px; display: inline-block; }
-          </style>
-        </head>
-        <body onload="window.print();">
-          <div class="header">
-            <h1>مركز زعيم الكرة للترفية</h1>
-            <p>فاتورة رقم #${inv.id}</p>
-            <p>تاريخ: ${new Date().toLocaleString('ar-SA')}</p>
-          </div>
-          <div class="detail">الجهاز: <strong>${inv.session.resource.name}</strong></div>
-          <div class="detail">وقت اللعب: ${inv.timeAmount.toFixed(2)} ريال</div>
-          <div class="detail">الطلبات (كوفي): ${inv.itemsAmount.toFixed(2)} ريال</div>
-          <div class="total">المبلغ الإجمالي: ${inv.totalAmount.toFixed(2)} ريال</div>
-          <div class="payment-badge">طريقة الدفع: ${inv.paymentMethod === 'NET' ? 'شبكة 💳' : 'كاش 💵'}</div>
-          <p style="margin-top: 30px; font-size: 12px; color: #666;">شكراً لزيارتكم</p>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
   };
 
   return (
@@ -278,7 +326,7 @@ export default function InvoicesPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-left space-x-3 space-x-reverse flex justify-end p-6">
-                      <Button variant="outline" className="h-14 w-14 border-slate-200 shadow-sm" onClick={() => printInvoice(inv)}>
+                      <Button variant="outline" className="h-14 w-14 border-slate-200 shadow-sm" onClick={() => printPosReceipt(inv)}>
                         <Printer className="h-6 w-6 text-slate-500" />
                       </Button>
                       <Button
@@ -355,7 +403,7 @@ export default function InvoicesPage() {
           <div className="py-10 text-center">
             <p className="text-slate-500 font-bold">المبلغ المطلوب:</p>
             <div className="text-7xl font-black text-emerald-700 mt-2">
-              {selectedInvoice?.totalAmount.toFixed(2)} <span className="text-2xl">ريال</span>
+              {selectedInvoice?.totalAmount.toFixed(2)} <span className="text-xl">ريال</span>
             </div>
           </div>
           <DialogFooter className="gap-3 flex-row">
