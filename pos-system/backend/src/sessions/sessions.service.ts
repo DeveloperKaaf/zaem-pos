@@ -6,12 +6,24 @@ import { LogsService } from '../logs/logs.service';
 
 @Injectable()
 export class SessionsService {
+  // Map to keep track of active timeouts for each session
+  private sessionTimeouts = new Map<string, { warning?: NodeJS.Timeout, stop?: NodeJS.Timeout }>();
+
   constructor(
     private prisma: PrismaService,
     private tuyaService: TuyaService,
     private eventEmitter: EventEmitter2,
     private logsService: LogsService,
   ) {}
+
+  private clearSessionTimeouts(sessionId: string) {
+    const timeouts = this.sessionTimeouts.get(sessionId);
+    if (timeouts) {
+      if (timeouts.warning) clearTimeout(timeouts.warning);
+      if (timeouts.stop) clearTimeout(timeouts.stop);
+      this.sessionTimeouts.delete(sessionId);
+    }
+  }
 
   async startSession(resourceId: string, durationMin: number, userId: string, paymentMethod?: string, splitData?: { cash: number, net: number }) {
     const resource = await this.prisma.resource.findUnique({
@@ -88,20 +100,30 @@ export class SessionsService {
       }
       await this.logsService.createLog(userId, 'START_SESSION', logMsg);
 
+      // Handle Timers
+      const timeouts: { warning?: NodeJS.Timeout, stop?: NodeJS.Timeout } = {};
+
       if (durationMin > 5) {
         const warningTime = (durationMin - 5) * 60 * 1000;
-        setTimeout(async () => {
-          if (resource.tuyaDeviceId) {
+        timeouts.warning = setTimeout(async () => {
+          // Double check if session is still active before flickering
+          const currentSession = await this.prisma.session.findUnique({ where: { id: session.id } });
+          if (currentSession && currentSession.status === 'ACTIVE' && resource.tuyaDeviceId) {
+            console.log(`Flickering device ${resource.name} for warning`);
             await this.tuyaService.controlDevice(resource.tuyaDeviceId, false, resource.tuyaSwitchCode);
-            setTimeout(() => this.tuyaService.controlDevice(resource.tuyaDeviceId, true, resource.tuyaSwitchCode), 500);
+            setTimeout(() => this.tuyaService.controlDevice(resource.tuyaDeviceId, true, resource.tuyaSwitchCode), 800);
           }
         }, warningTime);
       }
 
       if (durationMin > 0) {
-        setTimeout(() => {
+        timeouts.stop = setTimeout(() => {
           this.stopSession(session.id, 'SYSTEM');
         }, durationMin * 60 * 1000);
+      }
+
+      if (timeouts.warning || timeouts.stop) {
+        this.sessionTimeouts.set(session.id, timeouts);
       }
 
       this.eventEmitter.emit('session.updated', session);
@@ -154,6 +176,32 @@ export class SessionsService {
       return sess;
     });
 
+    // Clear old timers and set new ones for the extended duration
+    this.clearSessionTimeouts(sessionId);
+    const remainingMs = (updatedSession.durationMin * 60 * 1000) - (Date.now() - session.startTime.getTime());
+
+    if (remainingMs > 0) {
+      const timeouts: { warning?: NodeJS.Timeout, stop?: NodeJS.Timeout } = {};
+
+      // Stop timer
+      timeouts.stop = setTimeout(() => {
+        this.stopSession(sessionId, 'SYSTEM');
+      }, remainingMs);
+
+      // Warning timer (if applicable)
+      const warningRemainingMs = remainingMs - (5 * 60 * 1000);
+      if (warningRemainingMs > 0) {
+        timeouts.warning = setTimeout(async () => {
+          const current = await this.prisma.session.findUnique({ where: { id: sessionId } });
+          if (current && current.status === 'ACTIVE' && session.resource.tuyaDeviceId) {
+            await this.tuyaService.controlDevice(session.resource.tuyaDeviceId, false, session.resource.tuyaSwitchCode);
+            setTimeout(() => this.tuyaService.controlDevice(session.resource.tuyaDeviceId, true, session.resource.tuyaSwitchCode), 800);
+          }
+        }, warningRemainingMs);
+      }
+      this.sessionTimeouts.set(sessionId, timeouts);
+    }
+
     let logMsg = `تمديد جلسة لـ ${session.resource.name} بمقدار ${extraMin} دقيقة. المبلغ: ${extraPrice}`;
     if (paymentMethod === 'SPLIT' && splitData) {
         logMsg += ` (تقسيم: كاش ${splitData.cash} - شبكة ${splitData.net})`;
@@ -167,6 +215,9 @@ export class SessionsService {
   }
 
   async stopSession(sessionId: string, userId?: string, paymentMethod: string = 'CASH', splitData?: { cash: number, net: number }) {
+    // Clear any pending timers for this session
+    this.clearSessionTimeouts(sessionId);
+
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
       include: { resource: true, invoice: true },

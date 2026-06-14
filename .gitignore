@@ -1,3 +1,4 @@
+# قائمتك القديمة التي تفضلها
 *.iml
 .gradle
 /local.properties
@@ -13,3 +14,12 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# الإضافات الضرورية لمنع الـ 5700 ملف
+node_modules/
+**/node_modules/
+desktop-app/dist/
+.gradle/
+build/
+dist/
+.next/

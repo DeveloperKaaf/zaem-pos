@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    output: 'export',
+    images: {
+        unoptimized: true,
+    },
     typescript: {
         // تجاهل أخطاء TypeScript أثناء البناء لضمان التشغيل الفعلي السريع
         ignoreBuildErrors: true,
