@@ -67,5 +67,5 @@ pause
 
 
 git add .
-git commit -m "تحديث الطابعات"
+git commit -m "تحديث مشكلة الوردية"
 git push origin main

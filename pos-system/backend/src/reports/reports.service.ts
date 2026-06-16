@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
@@ -7,20 +7,32 @@ export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
   async startShift(userId: string, floatAmount: number) {
-    // إغلاق أي شفت نشط سابق لهذا المستخدم احتياطاً
-    await this.prisma.shift.updateMany({
-      where: { userId, isActive: true },
-      data: { isActive: false, endTime: new Date() }
-    });
+    try {
+      // إغلاق أي شفت نشط سابق لهذا المستخدم لضمان عدم التداخل
+      await this.prisma.shift.updateMany({
+        where: {
+          userId: userId,
+          isActive: true
+        },
+        data: {
+          isActive: false,
+          endTime: new Date()
+        }
+      });
 
-    return this.prisma.shift.create({
-      data: {
-        userId,
-        floatAmount,
-        isActive: true,
-        startTime: new Date()
-      }
-    });
+      // إنشاء وردية جديدة
+      return await this.prisma.shift.create({
+        data: {
+          userId,
+          floatAmount: Number(floatAmount) || 0,
+          isActive: true,
+          startTime: new Date()
+        }
+      });
+    } catch (error) {
+      console.error('Error starting shift:', error);
+      throw new InternalServerErrorException('فشل في إنشاء وردية جديدة في قاعدة البيانات');
+    }
   }
 
   async endShift(userId: string) {
@@ -165,7 +177,6 @@ export class ReportsService {
 
   async getShiftReport(userId: string) {
     const activeShift = await this.getShiftStatus(userId);
-    // إذا لم يوجد شفت نشط، نأخذ مبيعات اليوم فقط كحالة احتياطية
     const startTime = activeShift ? activeShift.startTime : startOfDay(new Date());
 
     const invoices = await this.prisma.invoice.findMany({
@@ -205,7 +216,6 @@ export class ReportsService {
     const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
     const floatAmount = activeShift ? activeShift.floatAmount : 0;
 
-    // المجموع الصافي = (الكاش + العهدة) - المصاريف
     const grandTotal = (cashTotal + floatAmount) - totalExpenses;
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
