@@ -67,5 +67,5 @@ pause
 
 
 git add .
-git commit -m "تحديث السويتشات بعد الـ5 دقائق"
+git commit -m "تحديث سعر الوقت المفتوح مع الهلل"
 git push origin main

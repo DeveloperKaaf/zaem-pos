@@ -21,7 +21,7 @@ import {
     SelectTrigger,
     SelectValue,
   } from "@/components/ui/select";
-import { Plus, Trash2, Save, RefreshCw, Gamepad2 } from "lucide-react";
+import { Plus, Trash2, Save, RefreshCw, Gamepad2, clock } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 
@@ -272,29 +272,48 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
   const [type, setType] = useState(resource.type);
   const [tuyaId, setTuyaId] = useState(resource.tuyaDeviceId || '');
   const [tuyaSwitchCode, setTuyaSwitchCode] = useState(resource.tuyaSwitchCode || 'switch_1');
-  const [prices, setPrices] = useState(resource.prices || []);
 
-  // Sync state if resource prop changes
+  // نستخدم سلاسل نصية (strings) لإتاحة كتابة الكسور العشرية مثل 0.50 بسلاسة
+  const [prices, setPrices] = useState(resource.prices?.map((p: any) => ({ ...p, price: p.price.toString(), durationMin: p.durationMin.toString() })) || []);
+
   useEffect(() => {
     setName(resource.name);
     setType(resource.type);
     setTuyaId(resource.tuyaDeviceId || '');
     setTuyaSwitchCode(resource.tuyaSwitchCode || 'switch_1');
-    setPrices(resource.prices || []);
+    setPrices(resource.prices?.map((p: any) => ({ ...p, price: p.price.toString(), durationMin: p.durationMin.toString() })) || []);
   }, [resource]);
 
   const addPriceRow = () => {
-    setPrices([...prices, { durationMin: 60, price: 30 }]);
+    setPrices([...prices, { durationMin: "60", price: "30" }]);
+  };
+
+  const addOpenTimeRow = () => {
+    if (prices.some((p: any) => p.durationMin === "0")) {
+        alert("يوجد سعر وقت مفتوح بالفعل");
+        return;
+    }
+    setPrices([{ durationMin: "0", price: "0.50" }, ...prices]);
   };
 
   const removePriceRow = (index: number) => {
     setPrices(prices.filter((_, i) => i !== index));
   };
 
-  const updatePriceRow = (index: number, field: string, value: any) => {
+  const updatePriceRow = (index: number, field: string, value: string) => {
     const newPrices = [...prices];
-    newPrices[index][field] = Number(value);
+    newPrices[index][field] = value;
     setPrices(newPrices);
+  };
+
+  const handleSave = () => {
+    // تحويل القيم إلى أرقام قبل الإرسال للسيرفر
+    const formattedPrices = prices.map((p: any) => ({
+        ...p,
+        durationMin: parseInt(p.durationMin),
+        price: parseFloat(p.price)
+    }));
+    onSave({ name, type, tuyaDeviceId: tuyaId, tuyaSwitchCode, prices: formattedPrices });
   };
 
   return (
@@ -307,10 +326,15 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
           </div>
           <div className="flex gap-2 mr-4">
             <Button variant="ghost" size="sm" onClick={onDelete} className="text-red-500 hover:bg-red-50">
-              <Trash2 className="ml-2 h-4 w-4" /> حذف
+              <Trash2 className="ml-2 h-4 w-4" /> حذف الجهاز
             </Button>
+
+            <Button variant="outline" size="sm" onClick={addOpenTimeRow} className="text-emerald-600 border-emerald-600 hover:bg-emerald-50">
+              <Plus className="ml-2 h-4 w-4" /> إضافة سعر دقيقة (وقت مفتوح)
+            </Button>
+
             <Button variant="outline" size="sm" onClick={addPriceRow} className="text-blue-600 border-blue-600">
-              <Plus className="ml-2 h-4 w-4" /> إضافة وقت
+              <Plus className="ml-2 h-4 w-4" /> إضافة وقت محدد
             </Button>
           </div>
         </CardTitle>
@@ -318,20 +342,32 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
       <CardContent>
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-4 font-bold text-sm text-gray-600 bg-gray-50 p-2 rounded">
-            <div>المدة (دقائق)</div>
+            <div>المدة (دقائق) - (0 تعني وقت مفتوح)</div>
             <div>السعر (ريال)</div>
-            <div>حذف</div>
+            <div>إجراء</div>
           </div>
           {prices.map((p: any, index: number) => (
-            <div key={index} className="grid grid-cols-3 gap-4 items-center">
+            <div key={index} className={`grid grid-cols-3 gap-4 items-center p-2 rounded-lg ${p.durationMin === "0" ? "bg-emerald-50/50 border border-emerald-100" : ""}`}>
               <div className="flex items-center gap-2">
-                <Input type="number" value={p.durationMin} onChange={(e) => updatePriceRow(index, 'durationMin', e.target.value)} />
-                <span className="text-xs text-gray-400 w-20">{p.durationMin == 0 ? 'وقت مفتوح' : 'دقيقة'}</span>
+                <Input
+                   type="number"
+                   value={p.durationMin}
+                   onChange={(e) => updatePriceRow(index, 'durationMin', e.target.value)}
+                   className={p.durationMin === "0" ? "border-emerald-500 font-bold text-emerald-700" : ""}
+                />
+                <span className="text-xs text-gray-400 w-24">{p.durationMin === "0" ? 'وقت مفتوح' : 'دقيقة'}</span>
               </div>
 
               <div className="flex items-center gap-2">
-                <Input type="number" step="0.01" value={p.price} onChange={(e) => updatePriceRow(index, 'price', e.target.value)} />
-                {p.durationMin == 0 && <span className="text-[10px] text-blue-600 font-bold w-24">ريال لكل دقيقة</span>}
+                <Input
+                   type="number"
+                   step="0.01"
+                   value={p.price}
+                   onChange={(e) => updatePriceRow(index, 'price', e.target.value)}
+                   className={p.durationMin === "0" ? "border-emerald-500 font-bold text-emerald-700" : ""}
+                />
+                {p.durationMin === "0" && <span className="text-[10px] text-emerald-600 font-bold w-32">ريال / للدقيقة</span>}
+                {p.durationMin !== "0" && <span className="text-[10px] text-gray-400 w-20">ريال للمدة</span>}
               </div>
 
               <Button variant="ghost" size="icon" onClick={() => removePriceRow(index)}>
@@ -361,8 +397,8 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
                 </Select>
              </div>
 
-             <Button className="bg-blue-600 hover:bg-blue-700 px-8 h-10 font-bold" onClick={() => onSave({ name, type, tuyaDeviceId: tuyaId, tuyaSwitchCode, prices })}>
-                <Save className="ml-2 h-5 w-5" /> حفظ التعديلات
+             <Button className="bg-blue-600 hover:bg-blue-700 px-8 h-10 font-bold shadow-md" onClick={handleSave}>
+                <Save className="ml-2 h-5 w-5" /> حفظ كافة التعديلات
              </Button>
           </div>
         </div>
