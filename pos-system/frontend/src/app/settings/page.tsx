@@ -21,7 +21,7 @@ import {
     SelectTrigger,
     SelectValue,
   } from "@/components/ui/select";
-import { Plus, Trash2, Save, RefreshCw, Gamepad2, clock } from "lucide-react";
+import { Plus, Trash2, Save, RefreshCw, Gamepad2, Clock } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from "@/config";
 
@@ -273,15 +273,21 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
   const [tuyaId, setTuyaId] = useState(resource.tuyaDeviceId || '');
   const [tuyaSwitchCode, setTuyaSwitchCode] = useState(resource.tuyaSwitchCode || 'switch_1');
 
-  // نستخدم سلاسل نصية (strings) لإتاحة كتابة الكسور العشرية مثل 0.50 بسلاسة
-  const [prices, setPrices] = useState(resource.prices?.map((p: any) => ({ ...p, price: p.price.toString(), durationMin: p.durationMin.toString() })) || []);
+  // نحتفظ بالأسعار كـ Strings للسماح بكتابة . (النقطة العشرية) بسلاسة
+  const [prices, setPrices] = useState([]);
 
   useEffect(() => {
-    setName(resource.name);
-    setType(resource.type);
-    setTuyaId(resource.tuyaDeviceId || '');
-    setTuyaSwitchCode(resource.tuyaSwitchCode || 'switch_1');
-    setPrices(resource.prices?.map((p: any) => ({ ...p, price: p.price.toString(), durationMin: p.durationMin.toString() })) || []);
+    if (resource) {
+      setName(resource.name);
+      setType(resource.type);
+      setTuyaId(resource.tuyaDeviceId || '');
+      setTuyaSwitchCode(resource.tuyaSwitchCode || 'switch_1');
+      setPrices(resource.prices?.map((p: any) => ({
+        id: p.id,
+        durationMin: p.durationMin.toString(),
+        price: p.price.toString()
+      })) || []);
+    }
   }, [resource]);
 
   const addPriceRow = () => {
@@ -290,7 +296,7 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
 
   const addOpenTimeRow = () => {
     if (prices.some((p: any) => p.durationMin === "0")) {
-        alert("يوجد سعر وقت مفتوح بالفعل");
+        alert("يوجد سعر وقت مفتوح لهذا الجهاز بالفعل");
         return;
     }
     setPrices([{ durationMin: "0", price: "0.50" }, ...prices]);
@@ -307,11 +313,10 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
   };
 
   const handleSave = () => {
-    // تحويل القيم إلى أرقام قبل الإرسال للسيرفر
     const formattedPrices = prices.map((p: any) => ({
         ...p,
         durationMin: parseInt(p.durationMin),
-        price: parseFloat(p.price)
+        price: parseFloat(p.price) || 0
     }));
     onSave({ name, type, tuyaDeviceId: tuyaId, tuyaSwitchCode, prices: formattedPrices });
   };
@@ -329,11 +334,11 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
               <Trash2 className="ml-2 h-4 w-4" /> حذف الجهاز
             </Button>
 
-            <Button variant="outline" size="sm" onClick={addOpenTimeRow} className="text-emerald-600 border-emerald-600 hover:bg-emerald-50">
+            <Button variant="outline" size="sm" onClick={addOpenTimeRow} className="text-emerald-600 border-emerald-600 hover:bg-emerald-50 font-bold">
               <Plus className="ml-2 h-4 w-4" /> إضافة سعر دقيقة (وقت مفتوح)
             </Button>
 
-            <Button variant="outline" size="sm" onClick={addPriceRow} className="text-blue-600 border-blue-600">
+            <Button variant="outline" size="sm" onClick={addPriceRow} className="text-blue-600 border-blue-600 font-bold">
               <Plus className="ml-2 h-4 w-4" /> إضافة وقت محدد
             </Button>
           </div>
@@ -342,12 +347,12 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
       <CardContent>
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-4 font-bold text-sm text-gray-600 bg-gray-50 p-2 rounded">
-            <div>المدة (دقائق) - (0 تعني وقت مفتوح)</div>
+            <div>المدة (دقائق) - (0 للوقت المفتوح)</div>
             <div>السعر (ريال)</div>
             <div>إجراء</div>
           </div>
           {prices.map((p: any, index: number) => (
-            <div key={index} className={`grid grid-cols-3 gap-4 items-center p-2 rounded-lg ${p.durationMin === "0" ? "bg-emerald-50/50 border border-emerald-100" : ""}`}>
+            <div key={index} className={`grid grid-cols-3 gap-4 items-center p-2 rounded-lg ${p.durationMin === "0" ? "bg-emerald-50/50 border border-emerald-200" : "bg-white border"}`}>
               <div className="flex items-center gap-2">
                 <Input
                    type="number"
@@ -360,13 +365,18 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
 
               <div className="flex items-center gap-2">
                 <Input
-                   type="number"
-                   step="0.01"
+                   type="text"
                    value={p.price}
-                   onChange={(e) => updatePriceRow(index, 'price', e.target.value)}
-                   className={p.durationMin === "0" ? "border-emerald-500 font-bold text-emerald-700" : ""}
+                   onChange={(e) => {
+                     const val = e.target.value;
+                     if (val === '' || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                       updatePriceRow(index, 'price', val);
+                     }
+                   }}
+                   className={p.durationMin === "0" ? "border-emerald-500 font-bold text-emerald-700 bg-white" : "bg-white"}
+                   placeholder="0.00"
                 />
-                {p.durationMin === "0" && <span className="text-[10px] text-emerald-600 font-bold w-32">ريال / للدقيقة</span>}
+                {p.durationMin === "0" && <span className="text-[10px] text-emerald-600 font-bold w-32">ريال / لكل دقيقة</span>}
                 {p.durationMin !== "0" && <span className="text-[10px] text-gray-400 w-20">ريال للمدة</span>}
               </div>
 
