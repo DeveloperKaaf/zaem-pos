@@ -134,19 +134,24 @@ export class SessionsService {
 
       // Handle Timers
       const timeouts: { warning?: NodeJS.Timeout, stop?: NodeJS.Timeout } = {};
+
+      // ملاحظة: تم تعطيل الوميض هنا لأنه يتم معالجته بشكل أكثر دقة في CleanupService
+      /*
       if (durationMin > 5) {
         const warningTime = (durationMin - 5) * 60 * 1000;
         timeouts.warning = setTimeout(async () => {
           const currentSession = await this.prisma.session.findUnique({ where: { id: result.session.id } });
           if (currentSession && currentSession.status === 'ACTIVE' && resource.tuyaDeviceId) {
             await this.tuyaService.controlDevice(resource.tuyaDeviceId, false, resource.tuyaSwitchCode);
-            setTimeout(() => this.tuyaService.controlDevice(resource.tuyaDeviceId, true, resource.tuyaSwitchCode), 800);
+            setTimeout(() => this.tuyaService.controlDevice(resource.tuyaDeviceId, true, resource.tuyaSwitchCode), 1200);
           }
         }, warningTime);
       }
+      */
+
       if (durationMin > 0) {
         timeouts.stop = setTimeout(() => {
-          this.stopSession(result.session.id, undefined, 'SYSTEM'); // لا نمرر userId عند الإغلاق التلقائي
+          this.stopSession(result.session.id, undefined, 'SYSTEM');
         }, durationMin * 60 * 1000);
       }
       if (timeouts.warning || timeouts.stop) {
@@ -235,16 +240,19 @@ export class SessionsService {
     if (remainingMs > 0) {
       const timeouts: { warning?: NodeJS.Timeout, stop?: NodeJS.Timeout } = {};
       timeouts.stop = setTimeout(() => { this.stopSession(sessionId, undefined, 'SYSTEM'); }, remainingMs);
+
+      /* تم تعطيل الوميض هنا أيضاً لمنع التكرار
       const warningRemainingMs = remainingMs - (5 * 60 * 1000);
       if (warningRemainingMs > 0) {
         timeouts.warning = setTimeout(async () => {
           const current = await this.prisma.session.findUnique({ where: { id: sessionId } });
           if (current && current.status === 'ACTIVE' && session.resource.tuyaDeviceId) {
             await this.tuyaService.controlDevice(session.resource.tuyaDeviceId, false, session.resource.tuyaSwitchCode);
-            setTimeout(() => this.tuyaService.controlDevice(session.resource.tuyaDeviceId, true, session.resource.tuyaSwitchCode), 800);
+            setTimeout(() => this.tuyaService.controlDevice(session.resource.tuyaDeviceId, true, session.resource.tuyaSwitchCode), 1200);
           }
         }, warningRemainingMs);
       }
+      */
       this.sessionTimeouts.set(sessionId, timeouts);
     }
 

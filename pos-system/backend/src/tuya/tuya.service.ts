@@ -10,6 +10,10 @@ export class TuyaService {
   private readonly accessKey: string;
   private readonly secretKey: string;
 
+  // Token Caching
+  private cachedToken: string | null = null;
+  private tokenExpireTime: number = 0;
+
   constructor(private configService: ConfigService) {
     this.baseUrl = (this.configService.get('TUYA_API_URL') || 'https://openapi.tuyaeu.com').replace(/['"]/g, '').trim();
     this.accessKey = (this.configService.get('TUYA_ACCESS_KEY') || '').replace(/['"]/g, '').trim();
@@ -33,6 +37,11 @@ export class TuyaService {
   }
 
   private async getAccessToken() {
+    // Return cached token if still valid (with 1 minute buffer)
+    if (this.cachedToken && Date.now() < (this.tokenExpireTime - 60000)) {
+      return this.cachedToken;
+    }
+
     const timestamp = Date.now().toString();
     const url = '/v1.0/token?grant_type=1';
 
@@ -52,7 +61,12 @@ export class TuyaService {
         throw new Error(`Tuya Auth Failed: ${response.data.msg} (Code: ${response.data.code})`);
       }
 
-      return response.data.result.access_token;
+      this.cachedToken = response.data.result.access_token;
+      // Tuya tokens usually expire in 7200 seconds (2 hours)
+      this.tokenExpireTime = Date.now() + (response.data.result.expire_time * 1000);
+
+      this.logger.log('✅ Tuya Access Token Refreshed');
+      return this.cachedToken;
     } catch (error) {
       this.logger.error('Failed to get Tuya access token', error.response?.data || error.message);
       throw error;
@@ -60,14 +74,16 @@ export class TuyaService {
   }
 
   async controlDevice(deviceId: string, status: boolean, switchCode: string = 'switch_1') {
-    if (!this.accessKey || !this.secretKey || !deviceId) return;
+    if (!this.accessKey || !this.secretKey || !deviceId) {
+      this.logger.warn(`Skipping Tuya Control: Missing credentials or Device ID. ID: ${deviceId}`);
+      return;
+    }
 
     try {
       const accessToken = await this.getAccessToken();
       const timestamp = Date.now().toString();
       const url = `/v1.0/devices/${deviceId.trim()}/commands`;
 
-      // Use the provided switchCode, fallback to switch_1
       const code = switchCode || 'switch_1';
 
       const body = {
@@ -77,6 +93,8 @@ export class TuyaService {
       };
 
       const sign = this.calculateSign('POST', url, accessToken, timestamp, body);
+
+      this.logger.debug(`Sending Tuya Command: ${deviceId} -> ${code}:${status}`);
 
       const response = await axios.post(`${this.baseUrl}${url}`, body, {
         headers: {
@@ -92,13 +110,14 @@ export class TuyaService {
       if (response.data.success) {
         this.logger.log(`✅ Tuya Success: Device ${deviceId} [${code}] -> ${status ? 'ON' : 'OFF'}`);
       } else {
-        this.logger.error(`❌ Tuya API Error [${response.data.code}]: ${response.data.msg}`);
+        this.logger.error(`❌ Tuya API Error [${response.data.code}]: ${response.data.msg} (Device: ${deviceId}, Code: ${code})`);
       }
 
       return response.data;
     } catch (error) {
-      this.logger.error(`🚨 Tuya Connection Error: ${error.message}`);
-      throw error;
+      this.logger.error(`🚨 Tuya Connection Error for ${deviceId}: ${error.message}`);
+      // Don't throw, just log to prevent crashing the whole session logic
+      return null;
     }
   }
 }
