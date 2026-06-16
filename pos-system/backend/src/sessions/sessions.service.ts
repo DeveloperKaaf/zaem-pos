@@ -273,7 +273,7 @@ export class SessionsService {
     this.clearSessionTimeouts(sessionId);
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
-      include: { resource: true, invoice: true },
+      include: { resource: { include: { prices: true } }, invoice: true },
     });
 
     if (!session || session.status !== 'ACTIVE') return;
@@ -283,7 +283,9 @@ export class SessionsService {
       const now = new Date();
       const diffMs = now.getTime() - session.startTime.getTime();
       const diffMin = Math.ceil(diffMs / (60 * 1000));
-      finalTimeAmount = diffMin * 0.5;
+
+      const openPrice = session.resource.prices.find(p => p.durationMin === 0)?.price || 0.5;
+      finalTimeAmount = diffMin * openPrice;
     }
 
     if (session.resource.tuyaDeviceId) {

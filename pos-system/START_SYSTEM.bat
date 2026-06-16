@@ -67,5 +67,5 @@ pause
 
 
 git add .
-git commit -m "تحديث مشكلة الوردية"
+git commit -m "تحديث السويتشات بعد الـ5 دقائق"
 git push origin main

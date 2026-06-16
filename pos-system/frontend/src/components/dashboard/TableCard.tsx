@@ -247,12 +247,15 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
           const m = Math.floor((diff % 3600000) / 60000);
           const s = Math.floor((diff % 60000) / 1000);
           setTimeLeft(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
-          setCurrentTimeAmount(diffMin * 0.5);
+
+          const openTimePriceConfig = resource.prices.find((p: any) => p.durationMin === 0);
+          const pricePerMin = openTimePriceConfig ? openTimePriceConfig.price : 0.5;
+          setCurrentTimeAmount(diffMin * pricePerMin);
         }
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [activeSession, activeInvoice, isPaused, totalPausedMs]);
+  }, [activeSession, activeInvoice, isPaused, totalPausedMs, resource]);
 
   const fetchProducts = async () => {
     const token = localStorage.getItem('token');
@@ -497,7 +500,7 @@ export function TableCard({ resource, onUpdate }: { resource: any; onUpdate: () 
                       setShowPayment(true);
                     }
                   }}>
-                    {p.durationMin === 0 ? "🕒 وقت مفتوح (0.5 ر/د)" : `${p.durationMin} دقيقة - ${p.price} ريال`}
+                    {p.durationMin === 0 ? `🕒 وقت مفتوح (${p.price} ر/د)` : `${p.durationMin} دقيقة - ${p.price} ريال`}
                   </Button>
                 ))}
               </div>

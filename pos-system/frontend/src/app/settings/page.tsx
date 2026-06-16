@@ -82,7 +82,7 @@ export default function SettingsPage() {
           type: newType,
           prices: [
             { durationMin: 60, price: 30 },
-            { durationMin: 0, price: 0 }
+            { durationMin: 0, price: 0.5 }
           ]
         })
       });
@@ -329,13 +329,10 @@ function ResourceSettingsCard({ resource, onSave, onDelete }: { resource: any, o
                 <span className="text-xs text-gray-400 w-20">{p.durationMin == 0 ? 'وقت مفتوح' : 'دقيقة'}</span>
               </div>
 
-              {p.durationMin != 0 ? (
-                <Input type="number" value={p.price} onChange={(e) => updatePriceRow(index, 'price', e.target.value)} />
-              ) : (
-                <div className="bg-slate-100 h-10 px-3 rounded flex items-center text-slate-400 text-xs font-bold border border-dashed border-slate-300">
-                  سيتم حساب السعر بناءً على وقت البدء والإغلاق
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <Input type="number" step="0.01" value={p.price} onChange={(e) => updatePriceRow(index, 'price', e.target.value)} />
+                {p.durationMin == 0 && <span className="text-[10px] text-blue-600 font-bold w-24">ريال لكل دقيقة</span>}
+              </div>
 
               <Button variant="ghost" size="icon" onClick={() => removePriceRow(index)}>
                 <Trash2 className="h-4 w-4 text-red-300" />
