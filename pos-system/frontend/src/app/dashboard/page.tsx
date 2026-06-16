@@ -42,7 +42,11 @@ export default function Dashboard() {
       const res = await fetch(`${API_BASE_URL}/resources`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.status === 401) { router.push('/login'); return; }
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        router.push('/login');
+        return;
+      }
       const data = await res.json();
       setResources(Array.isArray(data) ? data : []);
 
@@ -70,6 +74,13 @@ export default function Dashboard() {
       const res = await fetch(`${API_BASE_URL}/reports/shift/status`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        router.push('/login');
+        return;
+      }
+
       const data = await res.json();
       if (data && data.isActive) {
         setIsShiftStarted(true);
@@ -80,7 +91,7 @@ export default function Dashboard() {
         localStorage.removeItem('shiftStarted');
       }
     } catch (e) { console.error(e); }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     checkShiftStatus();
@@ -117,13 +128,19 @@ export default function Dashboard() {
         body: JSON.stringify({ floatAmount: parseFloat(floatAmount) })
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (res.ok) {
-        const data = await res.json();
         localStorage.setItem('shiftStarted', 'true');
         localStorage.setItem('shiftUser', data.userId);
         setIsShiftStarted(true);
       } else {
-        alert("خطأ في بدء الوردية");
+        if (res.status === 401) {
+          alert("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
+          router.push('/login');
+        } else {
+          alert(data.message || "خطأ في بدء الوردية");
+        }
       }
     } catch (e) {
       alert("خطأ في الاتصال بالسيرفر");
