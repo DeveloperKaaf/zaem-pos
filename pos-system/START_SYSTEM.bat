@@ -67,5 +67,5 @@ pause
 
 
 git add .
-git commit -m "تحديث سعر الوقت المفتوح مع الهلل"
+git commit -m "ايقونة التطبيق APK"
 git push origin main
